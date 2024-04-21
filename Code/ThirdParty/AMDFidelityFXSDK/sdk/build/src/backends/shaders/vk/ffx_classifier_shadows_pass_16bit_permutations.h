@@ -1,0 +1,75 @@
+#include "ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e.h"
+#include "ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb.h"
+#include "ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979.h"
+#include "ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b.h"
+
+typedef union ffx_classifier_shadows_pass_16bit_PermutationKey {
+    struct {
+        uint32_t FFX_CLASSIFIER_OPTION_INVERTED_DEPTH : 1;
+        uint32_t FFX_CLASSIFIER_OPTION_CLASSIFIER_MODE : 1;
+    };
+    uint32_t index;
+} ffx_classifier_shadows_pass_16bit_PermutationKey;
+
+typedef struct ffx_classifier_shadows_pass_16bit_PermutationInfo {
+    const uint32_t       blobSize;
+    const unsigned char* blobData;
+
+
+    const uint32_t  numConstantBuffers;
+    const char**    constantBufferNames;
+    const uint32_t* constantBufferBindings;
+    const uint32_t* constantBufferCounts;
+    const uint32_t* constantBufferSpaces;
+
+    const uint32_t  numSRVTextures;
+    const char**    srvTextureNames;
+    const uint32_t* srvTextureBindings;
+    const uint32_t* srvTextureCounts;
+    const uint32_t* srvTextureSpaces;
+
+    const uint32_t  numUAVTextures;
+    const char**    uavTextureNames;
+    const uint32_t* uavTextureBindings;
+    const uint32_t* uavTextureCounts;
+    const uint32_t* uavTextureSpaces;
+
+    const uint32_t  numSRVBuffers;
+    const char**    srvBufferNames;
+    const uint32_t* srvBufferBindings;
+    const uint32_t* srvBufferCounts;
+    const uint32_t* srvBufferSpaces;
+
+    const uint32_t  numUAVBuffers;
+    const char**    uavBufferNames;
+    const uint32_t* uavBufferBindings;
+    const uint32_t* uavBufferCounts;
+    const uint32_t* uavBufferSpaces;
+
+    const uint32_t  numSamplers;
+    const char**    samplerNames;
+    const uint32_t* samplerBindings;
+    const uint32_t* samplerCounts;
+    const uint32_t* samplerSpaces;
+
+    const uint32_t  numRTAccelerationStructures;
+    const char**    rtAccelerationStructureNames;
+    const uint32_t* rtAccelerationStructureBindings;
+    const uint32_t* rtAccelerationStructureCounts;
+    const uint32_t* rtAccelerationStructureSpaces;
+} ffx_classifier_shadows_pass_16bit_PermutationInfo;
+
+static const uint32_t g_ffx_classifier_shadows_pass_16bit_IndirectionTable[] = {
+    0,
+    1,
+    3,
+    2,
+};
+
+static const ffx_classifier_shadows_pass_16bit_PermutationInfo g_ffx_classifier_shadows_pass_16bit_PermutationInfo[] = {
+    { g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_size, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_data, 1, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_CBVResourceNames, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_CBVResourceBindings, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_CBVResourceCounts, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_CBVResourceSets, 2, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureSRVResourceNames, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureSRVResourceBindings, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureSRVResourceCounts, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureSRVResourceSets, 1, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_TextureUAVResourceSets, 0, 0, 0, 0, 0, 2, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_BufferUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_BufferUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_BufferUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_c896ec713c496275ebe15661ac9de11e_BufferUAVResourceSets, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
+    { g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_size, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_data, 1, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_CBVResourceNames, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_CBVResourceBindings, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_CBVResourceCounts, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_CBVResourceSets, 2, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureSRVResourceNames, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureSRVResourceBindings, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureSRVResourceCounts, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureSRVResourceSets, 1, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_TextureUAVResourceSets, 0, 0, 0, 0, 0, 2, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_BufferUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_BufferUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_BufferUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_4686a210b04c489b3e1e3b5c10e307cb_BufferUAVResourceSets, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
+    { g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_size, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_data, 1, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_CBVResourceNames, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_CBVResourceBindings, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_CBVResourceCounts, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_CBVResourceSets, 3, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureSRVResourceNames, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureSRVResourceBindings, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureSRVResourceCounts, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureSRVResourceSets, 1, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_TextureUAVResourceSets, 0, 0, 0, 0, 0, 2, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_BufferUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_BufferUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_BufferUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_342862b15f4dec345a376fd13b07e979_BufferUAVResourceSets, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
+    { g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_size, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_data, 1, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_CBVResourceNames, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_CBVResourceBindings, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_CBVResourceCounts, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_CBVResourceSets, 3, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureSRVResourceNames, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureSRVResourceBindings, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureSRVResourceCounts, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureSRVResourceSets, 1, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_TextureUAVResourceSets, 0, 0, 0, 0, 0, 2, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_BufferUAVResourceNames, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_BufferUAVResourceBindings, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_BufferUAVResourceCounts, g_ffx_classifier_shadows_pass_16bit_76edaeb9183f68789663fe2b5755dc0b_BufferUAVResourceSets, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
+};
+

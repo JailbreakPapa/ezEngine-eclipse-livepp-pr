@@ -1,0 +1,19 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-3.27/Modules/FindPackageHandleStandardArgs.cmake
+C:/Program Files/CMake/share/cmake-3.27/Modules/FindPackageMessage.cmake
+C:/Program Files/CMake/share/cmake-3.27/Modules/FindVulkan.cmake
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeLists.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersBLUR.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersCACAO.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersCAS.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersClassifier.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersDOF.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersDenoiser.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersFSR1.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersFSR2.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersLENS.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersLPM.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersParallelSort.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersSPD.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersSSSR.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/vk/CMakeShadersVRS.txt

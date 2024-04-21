@@ -1,0 +1,228 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\build\CMakeFiles\e56053fcbc6bb8076d35bd58d7ffa5cf\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersBlur.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersCACAO.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersCAS.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersClassifier.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersDOF.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersDenoiser.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersFSR1.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersFSR2.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersFSR3Upscaler.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersFrameinterpolation.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersLENS.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersLPM.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersOpticalflow.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersParallelSort.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersSPD.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersSSSR.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\dx12\CMakeShadersVRS.txt">
+      <Filter>Buildsystem Input Files\src\backends\dx12</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersBLUR.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersCACAO.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersCAS.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersClassifier.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersDOF.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersDenoiser.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersFSR1.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersFSR2.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersLENS.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersLPM.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersParallelSort.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersSPD.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersSSSR.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\backends\vk\CMakeShadersVRS.txt">
+      <Filter>Buildsystem Input Files\src\backends\vk</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\blur\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\blur</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\cacao\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\cacao</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\cas\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\cas</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\classifier\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\classifier</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\denoiser\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\denoiser</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\dof\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\dof</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\frameinterpolation\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\frameinterpolation</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\fsr1\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\fsr1</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\fsr2\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\fsr2</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\fsr3\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\fsr3</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\fsr3upscaler\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\fsr3upscaler</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\lens\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\lens</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\lpm\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\lpm</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\opticalflow\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\opticalflow</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\parallelsort\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\parallelsort</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\spd\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\spd</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\sssr\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\sssr</Filter>
+    </None>
+    <None Include="D:\Paradox-Engine\Code\ThirdParty\AMDFidelityFXSDK\sdk\src\components\vrs\CMakeLists.txt">
+      <Filter>Buildsystem Input Files\src\components\vrs</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{8AF1CD86-45C6-3A4C-842E-9B5EB5B2E8C6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\backends\dx12">
+      <UniqueIdentifier>{067710D9-2A6A-300B-A551-6E23EA6459B3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\backends\vk">
+      <UniqueIdentifier>{95DEE8B0-A29E-3B37-AC0E-F5B7B18417C6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\blur">
+      <UniqueIdentifier>{35797132-35CC-32A7-AE29-1F26130B5D4A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\cacao">
+      <UniqueIdentifier>{31426332-60B7-344A-8E35-B5192710C0DC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\cas">
+      <UniqueIdentifier>{CD73141E-A31E-3DFA-A3D4-7579873968AF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\classifier">
+      <UniqueIdentifier>{296B720D-2457-36E4-B160-0B8EF4289C0B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\denoiser">
+      <UniqueIdentifier>{FB2E6E09-6187-3B16-AD56-6C7619712EDA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\dof">
+      <UniqueIdentifier>{B7E9BACE-F64A-3ABA-B5A1-2FD8855030BF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\frameinterpolation">
+      <UniqueIdentifier>{6A373293-7C91-3264-8D0F-449ED2512AEE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\fsr1">
+      <UniqueIdentifier>{C4B24429-1EC4-3383-8A01-5A9DB552252A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\fsr2">
+      <UniqueIdentifier>{15DD50F2-C93A-379B-8191-B24542FE16B3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\fsr3">
+      <UniqueIdentifier>{03F17027-A7A1-3564-8361-B62A123C95AB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\fsr3upscaler">
+      <UniqueIdentifier>{369E7DF5-9B1A-3FBD-9818-52ACAEEF830F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\lens">
+      <UniqueIdentifier>{7B741528-6E9B-3AB7-8706-9BC99EDE7789}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\lpm">
+      <UniqueIdentifier>{D74AFCA7-142C-36F9-97E9-798F8EE54CF3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\opticalflow">
+      <UniqueIdentifier>{F71FF9FE-EDFB-3CA3-AF53-CFC506CA2738}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\parallelsort">
+      <UniqueIdentifier>{F0C9F8AF-3165-3A71-BE8E-107F06516CEC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\spd">
+      <UniqueIdentifier>{503CC2E0-C332-345C-977A-935FFF046492}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\sssr">
+      <UniqueIdentifier>{51F5DE0E-0572-38B9-848C-02DF501EC21A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Buildsystem Input Files\src\components\vrs">
+      <UniqueIdentifier>{FBCBACCF-802F-3C32-99AD-B44D1830C768}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

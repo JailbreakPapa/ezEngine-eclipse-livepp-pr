@@ -1,0 +1,19 @@
+# CMake generation dependency list for this directory.
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeLists.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersBlur.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersCACAO.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersCAS.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersClassifier.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersDOF.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersDenoiser.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersFSR1.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersFSR2.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersFSR3Upscaler.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersFrameinterpolation.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersLENS.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersLPM.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersOpticalflow.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersParallelSort.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersSPD.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersSSSR.txt
+D:/Paradox-Engine/Code/ThirdParty/AMDFidelityFXSDK/sdk/src/backends/dx12/CMakeShadersVRS.txt
