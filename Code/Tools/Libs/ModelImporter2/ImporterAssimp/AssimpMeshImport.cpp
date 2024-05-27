@@ -148,6 +148,12 @@ namespace ezModelImporter2
     if ((pMesh->mPrimitiveTypes & aiPrimitiveType::aiPrimitiveType_TRIANGLE) == 0) // no triangles in there ?
       return EZ_SUCCESS;
 
+    if (m_Options.m_bImportSkinningData && !pMesh->HasBones())
+    {
+      ezLog::Warning("Mesh contains an unskinned part ('{}' - {} triangles)", pMesh->mName.C_Str(), pMesh->mNumFaces);
+      return EZ_SUCCESS;
+    }
+
     // if enabled, the aiMesh is modified in-place to have less detail
     SimplifyAiMesh(pMesh);
 
@@ -323,7 +329,7 @@ namespace ezModelImporter2
     }
   }
 
-  static void SetMeshVertexData(ezMeshBufferResourceDescriptor& ref_mb, const aiMesh* pMesh, const ezMat4& mGlobalTransform, ezUInt32 uiVertexIndexOffset, const StreamIndices& streams, ezEnum<ezMeshNormalPrecision> meshNormalsPrecision, ezEnum<ezMeshTexCoordPrecision> meshTexCoordsPrecision)
+  static void SetMeshVertexData(ezMeshBufferResourceDescriptor& ref_mb, const aiMesh* pMesh, const ezMat4& mGlobalTransform, ezUInt32 uiVertexIndexOffset, const StreamIndices& streams, ezEnum<ezMeshNormalPrecision> meshNormalsPrecision, ezEnum<ezMeshTexCoordPrecision> meshTexCoordsPrecision, ezEnum<ezMeshVertexColorConversion> meshVertexColorConversion)
   {
     ezMat3 normalsTransform = mGlobalTransform.GetRotationalPart();
     if (normalsTransform.Invert(0.0f).Failed())
@@ -365,14 +371,16 @@ namespace ezModelImporter2
 
       if (streams.uiColor0 != ezInvalidIndex && pMesh->HasVertexColors(0))
       {
-        const ezColorLinearUB color = ConvertAssimpType(pMesh->mColors[0][vertIdx]);
-        ref_mb.SetVertexData(streams.uiColor0, finalVertIdx, color);
+        const ezColor color = ConvertAssimpType(pMesh->mColors[0][vertIdx]);
+
+        ezMeshBufferUtils::EncodeColor(color.GetAsVec4(), ref_mb.GetVertexData(streams.uiColor0, finalVertIdx), meshVertexColorConversion).IgnoreResult();
       }
 
       if (streams.uiColor1 != ezInvalidIndex && pMesh->HasVertexColors(1))
       {
-        const ezColorLinearUB color = ConvertAssimpType(pMesh->mColors[1][vertIdx]);
-        ref_mb.SetVertexData(streams.uiColor1, finalVertIdx, color);
+        const ezColor color = ConvertAssimpType(pMesh->mColors[1][vertIdx]);
+
+        ezMeshBufferUtils::EncodeColor(color.GetAsVec4(), ref_mb.GetVertexData(streams.uiColor1, finalVertIdx), meshVertexColorConversion).IgnoreResult();
       }
 
       if (streams.uiTangents != ezInvalidIndex && pMesh->HasTangentsAndBitangents())
@@ -666,8 +674,6 @@ namespace ezModelImporter2
 
     const bool b8BitBoneIndices = m_Options.m_pMeshOutput->m_Bones.GetCount() <= 255;
 
-    // TODO: m_uiTotalMeshTriangles and m_uiTotalMeshVertices are too high if we skip non-skinned meshes
-
     StreamIndices streams;
     AllocateMeshStreams(mb, ezArrayPtr<aiMesh*>(m_pScene->mMeshes, m_pScene->mNumMeshes), streams, m_uiTotalMeshVertices, m_uiTotalMeshTriangles, m_Options.m_MeshNormalsPrecision, m_Options.m_MeshTexCoordsPrecision, m_Options.m_bImportSkinningData, b8BitBoneIndices, m_Options.m_MeshBoneWeightPrecision);
 
@@ -690,7 +696,7 @@ namespace ezModelImporter2
           continue;
         }
 
-        SetMeshVertexData(mb, mi.m_pMesh, mi.m_GlobalTransform, uiMeshCurVertexIdx, streams, m_Options.m_MeshNormalsPrecision, m_Options.m_MeshTexCoordsPrecision);
+        SetMeshVertexData(mb, mi.m_pMesh, mi.m_GlobalTransform, uiMeshCurVertexIdx, streams, m_Options.m_MeshNormalsPrecision, m_Options.m_MeshTexCoordsPrecision, m_Options.m_MeshVertexColorConversion);
 
         if (m_Options.m_bImportSkinningData)
         {

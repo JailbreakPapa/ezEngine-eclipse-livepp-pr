@@ -100,7 +100,9 @@ ezResult ezGraphicsTest::CreateRenderer(ezGALDevice*& out_pDevice)
   // Create a device
   {
     ezGALDeviceCreationDescription DeviceInit;
-    DeviceInit.m_bDebugDevice = false;
+#if EZ_ENABLED(EZ_COMPILE_FOR_DEBUG)
+    DeviceInit.m_bDebugDevice = true;
+#endif
     out_pDevice = ezGALDeviceFactory::CreateDevice(sRendererName, ezFoundation::GetDefaultAllocator(), DeviceInit);
     if (out_pDevice->Init().Failed())
       return EZ_FAILURE;
@@ -122,7 +124,7 @@ ezResult ezGraphicsTest::CreateRenderer(ezGALDevice*& out_pDevice)
     }
     else if (out_pDevice->GetCapabilities().m_sAdapterName.FindSubString_NoCase("Nvidia") || out_pDevice->GetCapabilities().m_sAdapterName.FindSubString_NoCase("GeForce"))
     {
-      // Line rendering is different on AMD and requires separate images for tests rendering lines.
+      // Line rendering is different on Nvidia and requires separate images for tests rendering lines.
       ezTestFramework::GetInstance()->SetImageReferenceOverrideFolderName("Images_Reference_D3D11Nvidia");
     }
     else
@@ -135,6 +137,10 @@ ezResult ezGraphicsTest::CreateRenderer(ezGALDevice*& out_pDevice)
     if (out_pDevice->GetCapabilities().m_sAdapterName.FindSubString_NoCase("llvmpipe"))
     {
       ezTestFramework::GetInstance()->SetImageReferenceOverrideFolderName("Images_Reference_LLVMPIPE");
+    }
+    else if (out_pDevice->GetCapabilities().m_sAdapterName.FindSubString_NoCase("SwiftShader"))
+    {
+      ezTestFramework::GetInstance()->SetImageReferenceOverrideFolderName("Images_Reference_SwiftShader");
     }
     else
     {
@@ -340,7 +346,7 @@ void ezGraphicsTest::SetClipSpace()
   ezRenderContext::GetDefaultInstance()->SetShaderPermutationVariable(sClipSpaceFlipped, clipSpace == ezClipSpaceYMode::Flipped ? sTrue : sFalse);
 }
 
-void ezGraphicsTest::RenderCube(ezRectFloat viewport, ezMat4 mMVP, ezUInt32 uiRenderTargetClearMask, ezGALResourceViewHandle hSRV)
+void ezGraphicsTest::RenderCube(ezRectFloat viewport, ezMat4 mMVP, ezUInt32 uiRenderTargetClearMask, ezGALTextureResourceViewHandle hSRV)
 {
   ezGALRenderCommandEncoder* pCommandEncoder = BeginRendering(ezColor::RebeccaPurple, uiRenderTargetClearMask, &viewport);
 

@@ -17,6 +17,7 @@ struct ezMsgExtractOccluderData;
 struct ezMsgSetMeshMaterial;
 struct ezMsgSetColor;
 class ezMeshResourceDescriptor;
+struct ezMsgSetCustomData;
 using ezMeshResourceHandle = ezTypedResourceHandle<class ezMeshResource>;
 using ezMaterialResourceHandle = ezTypedResourceHandle<class ezMaterialResource>;
 
@@ -81,6 +82,14 @@ public:
   /// \brief The geometry type to build.
   void SetShape(ezEnum<ezGreyBoxShape> shape);                // [ property ]
   ezEnum<ezGreyBoxShape> GetShape() const { return m_Shape; } // [ property ]
+
+  /// \brief An additional tint color passed to the renderer to modify the mesh.
+  void SetColor(const ezColor& color); // [ property ]
+  const ezColor& GetColor() const;     // [ property ]
+
+  /// \brief An additional vec4 passed to the renderer that can be used by custom material shaders for effects.
+  void SetCustomData(const ezVec4& vData); // [ property ]
+  const ezVec4& GetCustomData() const;     // [ property ]
 
   /// \brief The ezMaterialResource file to use.
   void SetMaterialFile(const char* szFile); // [ property ]
@@ -151,10 +160,12 @@ protected:
 
   void OnMsgSetMeshMaterial(ezMsgSetMeshMaterial& ref_msg); // [ msg handler ]
   void OnMsgSetColor(ezMsgSetColor& ref_msg);               // [ msg handler ]
+  void OnMsgSetCustomData(ezMsgSetCustomData& ref_msg);     // [ msg handler ]
 
   ezEnum<ezGreyBoxShape> m_Shape;
   ezMaterialResourceHandle m_hMaterial;
   ezColor m_Color = ezColor::White;
+  ezVec4 m_vCustomData = ezVec4(0, 1, 0, 1);
   float m_fSizeNegX = 0;
   float m_fSizePosX = 0;
   float m_fSizeNegY = 0;

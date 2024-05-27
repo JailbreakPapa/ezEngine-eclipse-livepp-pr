@@ -20,8 +20,10 @@ void ezRendererTestAdvancedFeatures::SetupSubTests()
   const ezGALDeviceCapabilities& caps = ezGALDevice::GetDefaultDevice()->GetCapabilities();
 
   AddSubTest("01 - ReadRenderTarget", SubTests::ST_ReadRenderTarget);
-  AddSubTest("02 - VertexShaderRenderTargetArrayIndex", SubTests::ST_VertexShaderRenderTargetArrayIndex);
-
+  if (caps.m_bVertexShaderRenderTargetArrayIndex)
+  {
+    AddSubTest("02 - VertexShaderRenderTargetArrayIndex", SubTests::ST_VertexShaderRenderTargetArrayIndex);
+  }
 #if EZ_ENABLED(EZ_SUPPORTS_PROCESSES)
   if (caps.m_bSharedTextures)
   {
@@ -54,7 +56,7 @@ ezResult ezRendererTestAdvancedFeatures::InitializeSubTest(ezInt32 iIdentifier)
     desc.SetAsRenderTarget(8, 8, ezGALResourceFormat::BGRAUByteNormalizedsRGB, ezGALMSAASampleCount::None);
     m_hTexture2D = m_pDevice->CreateTexture(desc);
 
-    ezGALResourceViewCreationDescription viewDesc;
+    ezGALTextureResourceViewCreationDescription viewDesc;
     viewDesc.m_hTexture = m_hTexture2D;
     viewDesc.m_uiMipLevelsToUse = 1;
     for (ezUInt32 i = 0; i < 4; i++)
@@ -71,7 +73,7 @@ ezResult ezRendererTestAdvancedFeatures::InitializeSubTest(ezInt32 iIdentifier)
   {
     // Texture2D as compute RW target. Note that SRGB and depth formats are not supported by most graphics cards for this purpose.
     ezEnum<ezGALResourceFormat> textureFormat;
-    ezGALResourceFormat::Enum formats[] = {ezGALResourceFormat::BGRAUByteNormalized, ezGALResourceFormat::RGBAUByteNormalized};
+    ezGALResourceFormat::Enum formats[] = {ezGALResourceFormat::RGBAFloat, ezGALResourceFormat::BGRAUByteNormalized, ezGALResourceFormat::RGBAUByteNormalized};
     for (auto format : formats)
     {
       if (m_pDevice->GetCapabilities().m_FormatSupport[format].IsSet(ezGALResourceFormatSupport::TextureRW))
@@ -91,7 +93,7 @@ ezResult ezRendererTestAdvancedFeatures::InitializeSubTest(ezInt32 iIdentifier)
     desc.m_ResourceAccess.m_bImmutable = false;
     m_hTexture2D = m_pDevice->CreateTexture(desc);
 
-    ezGALResourceViewCreationDescription viewDesc;
+    ezGALTextureResourceViewCreationDescription viewDesc;
     viewDesc.m_hTexture = m_hTexture2D;
     viewDesc.m_uiMipLevelsToUse = 1;
     viewDesc.m_uiMostDetailedMipLevel = 0;
@@ -103,11 +105,6 @@ ezResult ezRendererTestAdvancedFeatures::InitializeSubTest(ezInt32 iIdentifier)
 
   if (iIdentifier == ST_VertexShaderRenderTargetArrayIndex)
   {
-    if (!m_pDevice->GetCapabilities().m_bVertexShaderRenderTargetArrayIndex)
-    {
-      ezTestFramework::GetInstance()->Output(ezTestOutput::Warning, "VertexShaderRenderTargetArrayIndex capability not supported, skipping test.");
-      return EZ_SUCCESS;
-    }
     // Texture2DArray
     ezGALTextureCreationDescription desc;
     desc.SetAsRenderTarget(320 / 2, 240, ezGALResourceFormat::BGRAUByteNormalizedsRGB, ezGALMSAASampleCount::None);
@@ -473,9 +470,9 @@ void ezRendererTestAdvancedFeatures::Compute()
     {
       ezRenderContext::GetDefaultInstance()->BindShader(m_hShader2);
 
-      ezGALUnorderedAccessViewHandle hFilterOutput;
+      ezGALTextureUnorderedAccessViewHandle hFilterOutput;
       {
-        ezGALUnorderedAccessViewCreationDescription desc;
+        ezGALTextureUnorderedAccessViewCreationDescription desc;
         desc.m_hTexture = m_hTexture2D;
         desc.m_uiMipLevelToUse = 0;
         desc.m_uiFirstArraySlice = 0;

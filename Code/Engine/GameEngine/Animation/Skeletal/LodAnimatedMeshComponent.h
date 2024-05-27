@@ -64,6 +64,10 @@ public:
   void SetColor(const ezColor& color); // [ property ]
   const ezColor& GetColor() const;     // [ property ]
 
+  /// \brief An additional vec4 passed to the renderer that can be used by custom material shaders for effects.
+  void SetCustomData(const ezVec4& vData); // [ property ]
+  const ezVec4& GetCustomData() const;     // [ property ]
+
   /// \brief The sorting depth offset allows to tweak the order in which this mesh is rendered relative to other meshes.
   ///
   /// This is mainly useful for transparent objects to render them before or after other meshes.
@@ -75,10 +79,11 @@ public:
   bool GetShowDebugInfo() const;     // [ property ]
 
   /// \brief Disabling the LOD range overlap functionality can make it easier to determine the desired coverage thresholds.
-  void SetOverlapRanges(bool bOverlap);       // [ property ]
-  bool GetOverlapRanges() const;              // [ property ]
+  void SetOverlapRanges(bool bOverlap);                 // [ property ]
+  bool GetOverlapRanges() const;                        // [ property ]
 
-  void OnMsgSetColor(ezMsgSetColor& ref_msg); // [ msg handler ]
+  void OnMsgSetColor(ezMsgSetColor& ref_msg);           // [ msg handler ]
+  void OnMsgSetCustomData(ezMsgSetCustomData& ref_msg); // [ msg handler ]
 
   void RetrievePose(ezDynamicArray<ezMat4>& out_modelTransforms, ezTransform& out_rootTransform, const ezSkeleton& skeleton);
 
@@ -89,6 +94,7 @@ protected:
   mutable ezInt32 m_iCurLod = 0;
   ezDynamicArray<ezLodAnimatedMeshLod> m_Meshes;
   ezColor m_Color = ezColor::White;
+  ezVec4 m_vCustomData = ezVec4(0, 1, 0, 1);
   float m_fSortingDepthOffset = 0.0f;
   ezVec3 m_vBoundsOffset = ezVec3::MakeZero();
   float m_fBoundsRadius = 1.0f;

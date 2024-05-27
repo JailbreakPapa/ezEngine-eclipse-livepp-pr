@@ -158,7 +158,7 @@ public:
   static void Draw2DRectangle(const ezDebugRendererContext& context, const ezRectFloat& rectInPixel, float fDepth, const ezColor& color, const ezTexture2DResourceHandle& hTexture, ezVec2 vScale = ezVec2(1, 1));
 
   /// \brief Renders a textured 2D rectangle in screen-space for one frame.
-  static void Draw2DRectangle(const ezDebugRendererContext& context, const ezRectFloat& rectInPixel, float fDepth, const ezColor& color, ezGALResourceViewHandle hResourceView, ezVec2 vScale = ezVec2(1, 1));
+  static void Draw2DRectangle(const ezDebugRendererContext& context, const ezRectFloat& rectInPixel, float fDepth, const ezColor& color, ezGALTextureResourceViewHandle hResourceView, ezVec2 vScale = ezVec2(1, 1));
 
   /// \brief Displays a string in screen-space for one frame.
   ///
@@ -217,16 +217,31 @@ public:
   /// \brief Renders a cylinder starting at the center position, along the +X axis.
   ///
   /// If the start and end radius are different, a cone or arrow can be created.
-  static void DrawCylinder(const ezDebugRendererContext& context, float fRadiusStart, float fRadiusEnd, float fLength, const ezColor& solidColor, const ezColor& lineColor, const ezTransform& transform, bool bCapStart = false, bool bCapEnd = false);
+  static void DrawCylinder(const ezDebugRendererContext& context, float fRadiusStart, float fRadiusEnd, float fLength, const ezColor& solidColor, const ezColor& lineColor, const ezTransform& transform, bool bCapStart = false, bool bCapEnd = false, ezBasisAxis::Enum cylinderAxis = ezBasisAxis::PositiveX);
 
   /// \brief Renders a line arrow.
   static void DrawArrow(const ezDebugRendererContext& context, float fSize, const ezColor& color, const ezTransform& transform, ezVec3 vForwardAxis = ezVec3::MakeAxisX());
 
+  /// \brief Returns the width of single glyph in pixels for the given text size
+  static float GetTextGlyphWidth(ezUInt32 uiSizeInPixel = 16);
+
+  /// \brief Returns the line height in pixels for the given text size
+  static float GetTextLineHeight(ezUInt32 uiSizeInPixel = 16);
+
+  /// \brief Returns the global debug text scale
+  static float GetTextScale();
+
+  /// \brief Sets the global debug text scale
+  static void SetTextScale(float fScale);
+
 private:
   friend class ezSimpleRenderPass;
 
-  static void Render(const ezRenderViewContext& renderViewContext);
-  static void RenderInternal(const ezDebugRendererContext& context, const ezRenderViewContext& renderViewContext);
+  static void RenderScreenSpace(const ezRenderViewContext& renderViewContext);
+  static void RenderInternalScreenSpace(const ezDebugRendererContext& context, const ezRenderViewContext& renderViewContext);
+
+  static void RenderWorldSpace(const ezRenderViewContext& renderViewContext);
+  static void RenderInternalWorldSpace(const ezDebugRendererContext& context, const ezRenderViewContext& renderViewContext);
 
   static void OnEngineStartup();
   static void OnEngineShutdown();

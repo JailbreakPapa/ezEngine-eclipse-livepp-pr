@@ -93,12 +93,13 @@ void ezProcPlacementComponentManager::FindTiles(const ezWorldModule::UpdateConte
     auto outputs = pResource->GetPlacementOutputs();
 
     pComponent->m_OutputContexts.Clear();
+    pComponent->m_OutputContexts.SetCount(outputs.GetCount());
     for (ezUInt32 uiIndex = 0; uiIndex < outputs.GetCount(); ++uiIndex)
     {
       const auto& pOutput = outputs[uiIndex];
       if (pOutput->IsValid())
       {
-        auto& outputContext = pComponent->m_OutputContexts.ExpandAndGetRef();
+        auto& outputContext = pComponent->m_OutputContexts[uiIndex];
         outputContext.m_pOutput = pOutput;
         outputContext.m_pUpdateTilesTask = EZ_DEFAULT_NEW(FindPlacementTilesTask, pComponent, uiIndex);
       }
@@ -128,6 +129,9 @@ void ezProcPlacementComponentManager::FindTiles(const ezWorldModule::UpdateConte
       auto& outputContexts = pComponent->m_OutputContexts;
       for (auto& outputContext : outputContexts)
       {
+        if (outputContext.IsValid() == false)
+          continue;
+
         outputContext.m_pUpdateTilesTask->AddCameraPosition(visibleComponent.m_vCameraPosition);
 
         if (outputContext.m_pUpdateTilesTask->IsTaskFinished())
@@ -165,6 +169,9 @@ void ezProcPlacementComponentManager::PreparePlace(const ezWorldModule::UpdateCo
       auto& outputContexts = pComponent->m_OutputContexts;
       for (auto& outputContext : outputContexts)
       {
+        if (outputContext.IsValid() == false)
+          continue;
+
         auto oldTiles = outputContext.m_pUpdateTilesTask->GetOldTiles();
         for (ezUInt64 uiOldTileKey : oldTiles)
         {

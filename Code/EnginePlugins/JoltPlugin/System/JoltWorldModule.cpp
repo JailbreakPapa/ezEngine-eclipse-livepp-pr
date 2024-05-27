@@ -797,6 +797,14 @@ void ezJoltWorldModule::UpdateSettingsCfg()
 void ezJoltWorldModule::ApplySettingsCfg()
 {
   SetGravity(m_Settings.m_vObjectGravity, m_Settings.m_vCharacterGravity);
+
+  if (m_pSystem)
+  {
+    auto physicsSettings = m_pSystem->GetPhysicsSettings();
+    physicsSettings.mPointVelocitySleepThreshold = m_Settings.m_fSleepVelocityThreshold;
+
+    m_pSystem->SetPhysicsSettings(physicsSettings);
+  }
 }
 
 void ezJoltWorldModule::UpdateConstraints()
@@ -1083,6 +1091,26 @@ void ezJoltWorldModule::DebugDrawGeometry(const ezVec3& vCenter, float fRadius, 
     pMesh->SetMaterialFile(vis.m_szMaterial);
     pMesh->SetColor(vis.m_Color);
   }
+}
+
+//////////////////////////////////////////////////////////////////
+
+// clang-format off
+EZ_IMPLEMENT_WORLD_MODULE(ezJoltNavmeshGeoWorldModule);
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezJoltNavmeshGeoWorldModule, 1, ezRTTINoAllocator)
+EZ_END_DYNAMIC_REFLECTED_TYPE
+// clang-format on
+
+ezJoltNavmeshGeoWorldModule::ezJoltNavmeshGeoWorldModule(ezWorld* pWorld)
+  : ezNavmeshGeoWorldModuleInterface(pWorld)
+{
+  m_pJoltModule = pWorld->GetOrCreateModule<ezJoltWorldModule>();
+}
+
+void ezJoltNavmeshGeoWorldModule::RetrieveGeometryInArea(ezUInt32 uiCollisionLayer, const ezBoundingBox& box, ezDynamicArray<ezNavmeshTriangle>& out_triangles) const
+{
+  const ezPhysicsQueryParameters params(uiCollisionLayer, ezPhysicsShapeType::Static);
+  m_pJoltModule->QueryGeometryInBox(params, box, out_triangles);
 }
 
 EZ_STATICLINK_FILE(JoltPlugin, JoltPlugin_System_JoltWorldModule);

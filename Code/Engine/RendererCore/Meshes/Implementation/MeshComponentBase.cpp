@@ -74,7 +74,7 @@ void ezMeshRenderData::FillBatchIdAndSortingKey()
 //////////////////////////////////////////////////////////////////////////
 
 // clang-format off
-EZ_BEGIN_ABSTRACT_COMPONENT_TYPE(ezMeshComponentBase, 3)
+EZ_BEGIN_ABSTRACT_COMPONENT_TYPE(ezMeshComponentBase, 4)
 {
   EZ_BEGIN_ATTRIBUTES
   {
@@ -86,6 +86,7 @@ EZ_BEGIN_ABSTRACT_COMPONENT_TYPE(ezMeshComponentBase, 3)
     EZ_MESSAGE_HANDLER(ezMsgExtractRenderData, OnMsgExtractRenderData),
     EZ_MESSAGE_HANDLER(ezMsgSetMeshMaterial, OnMsgSetMeshMaterial),
     EZ_MESSAGE_HANDLER(ezMsgSetColor, OnMsgSetColor),
+    EZ_MESSAGE_HANDLER(ezMsgSetCustomData, OnMsgSetCustomData),
   } EZ_END_MESSAGEHANDLERS;
 }
 EZ_END_ABSTRACT_COMPONENT_TYPE;
@@ -111,6 +112,7 @@ void ezMeshComponentBase::SerializeComponent(ezWorldWriter& inout_stream) const
 
   s << m_Color;
   s << m_fSortingDepthOffset;
+  s << m_vCustomData;
 }
 
 void ezMeshComponentBase::DeserializeComponent(ezWorldReader& inout_stream)
@@ -143,6 +145,11 @@ void ezMeshComponentBase::DeserializeComponent(ezWorldReader& inout_stream)
   if (uiVersion >= 3)
   {
     s >> m_fSortingDepthOffset;
+  }
+
+  if (uiVersion >= 4)
+  {
+    s >> m_vCustomData;
   }
 }
 
@@ -185,6 +192,7 @@ void ezMeshComponentBase::OnMsgExtractRenderData(ezMsgExtractRenderData& msg) co
       pRenderData->m_hMesh = m_hMesh;
       pRenderData->m_hMaterial = hMaterial;
       pRenderData->m_Color = m_Color;
+      pRenderData->m_vCustomData = m_vCustomData;
       pRenderData->m_uiSubMeshIndex = uiPartIndex;
       pRenderData->m_uiUniqueID = GetUniqueIdForRendering(uiMaterialIndex);
 
@@ -272,6 +280,18 @@ const ezColor& ezMeshComponentBase::GetColor() const
   return m_Color;
 }
 
+void ezMeshComponentBase::SetCustomData(const ezVec4& vData)
+{
+  m_vCustomData = vData;
+
+  InvalidateCachedRenderData();
+}
+
+const ezVec4& ezMeshComponentBase::GetCustomData() const
+{
+  return m_vCustomData;
+}
+
 void ezMeshComponentBase::SetSortingDepthOffset(float fOffset)
 {
   m_fSortingDepthOffset = fOffset;
@@ -293,6 +313,12 @@ void ezMeshComponentBase::OnMsgSetColor(ezMsgSetColor& ref_msg)
 {
   ref_msg.ModifyColor(m_Color);
 
+  InvalidateCachedRenderData();
+}
+
+void ezMeshComponentBase::OnMsgSetCustomData(ezMsgSetCustomData& ref_msg)
+{
+  m_vCustomData = ref_msg.m_vData;
   InvalidateCachedRenderData();
 }
 

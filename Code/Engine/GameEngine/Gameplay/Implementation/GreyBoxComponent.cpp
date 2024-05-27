@@ -25,13 +25,14 @@ EZ_BEGIN_STATIC_REFLECTED_ENUM(ezGreyBoxShape, 2)
   EZ_ENUM_CONSTANTS(ezGreyBoxShape::SpiralStairs)
 EZ_END_STATIC_REFLECTED_ENUM;
 
-EZ_BEGIN_COMPONENT_TYPE(ezGreyBoxComponent, 6, ezComponentMode::Static)
+EZ_BEGIN_COMPONENT_TYPE(ezGreyBoxComponent, 7, ezComponentMode::Static)
 {
   EZ_BEGIN_PROPERTIES
   {
     EZ_ENUM_ACCESSOR_PROPERTY("Shape", ezGreyBoxShape, GetShape, SetShape),
     EZ_ACCESSOR_PROPERTY("Material", GetMaterialFile, SetMaterialFile)->AddAttributes(new ezAssetBrowserAttribute("CompatibleAsset_Material")),
-    EZ_MEMBER_PROPERTY("Color", m_Color)->AddAttributes(new ezDefaultValueAttribute(ezColor::White), new ezExposeColorAlphaAttribute()),
+    EZ_ACCESSOR_PROPERTY("Color", GetColor, SetColor)->AddAttributes(new ezExposeColorAlphaAttribute()),
+    EZ_ACCESSOR_PROPERTY("CustomData", GetCustomData, SetCustomData)->AddAttributes(new ezDefaultValueAttribute(ezVec4(0, 1, 0, 1))),
     EZ_ACCESSOR_PROPERTY("SizeNegX", GetSizeNegX, SetSizeNegX)->AddAttributes(new ezGroupAttribute("Size", "Size")),//->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant())),
     EZ_ACCESSOR_PROPERTY("SizePosX", GetSizePosX, SetSizePosX),//->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant())),
     EZ_ACCESSOR_PROPERTY("SizeNegY", GetSizeNegY, SetSizeNegY),//->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant())),
@@ -62,6 +63,7 @@ EZ_BEGIN_COMPONENT_TYPE(ezGreyBoxComponent, 6, ezComponentMode::Static)
     EZ_MESSAGE_HANDLER(ezMsgExtractOccluderData, OnMsgExtractOccluderData),
     EZ_MESSAGE_HANDLER(ezMsgSetMeshMaterial, OnMsgSetMeshMaterial),
     EZ_MESSAGE_HANDLER(ezMsgSetColor, OnMsgSetColor),
+    EZ_MESSAGE_HANDLER(ezMsgSetCustomData, OnMsgSetCustomData),
   }
   EZ_END_MESSAGEHANDLERS;
 }
@@ -101,6 +103,9 @@ void ezGreyBoxComponent::SerializeComponent(ezWorldWriter& inout_stream) const
 
   // Version 5
   s << m_bUseAsOccluder;
+
+  // Version 7
+  s << m_vCustomData;
 }
 
 void ezGreyBoxComponent::DeserializeComponent(ezWorldReader& inout_stream)
@@ -141,6 +146,11 @@ void ezGreyBoxComponent::DeserializeComponent(ezWorldReader& inout_stream)
   if (uiVersion >= 5)
   {
     s >> m_bUseAsOccluder;
+  }
+
+  if (uiVersion >= 7)
+  {
+    s >> m_vCustomData;
   }
 }
 
@@ -196,6 +206,7 @@ void ezGreyBoxComponent::OnMsgExtractRenderData(ezMsgExtractRenderData& msg) con
       pRenderData->m_hMesh = m_hMesh;
       pRenderData->m_hMaterial = hMaterial;
       pRenderData->m_Color = m_Color;
+      pRenderData->m_vCustomData = m_vCustomData;
 
       pRenderData->m_uiSubMeshIndex = uiPartIndex;
       pRenderData->m_uiFlipWinding = uiFlipWinding;
@@ -229,6 +240,30 @@ void ezGreyBoxComponent::SetShape(ezEnum<ezGreyBoxShape> shape)
 {
   m_Shape = shape;
   InvalidateMesh();
+}
+
+void ezGreyBoxComponent::SetColor(const ezColor& color)
+{
+  m_Color = color;
+
+  InvalidateCachedRenderData();
+}
+
+const ezColor& ezGreyBoxComponent::GetColor() const
+{
+  return m_Color;
+}
+
+void ezGreyBoxComponent::SetCustomData(const ezVec4& vData)
+{
+  m_vCustomData = vData;
+
+  InvalidateCachedRenderData();
+}
+
+const ezVec4& ezGreyBoxComponent::GetCustomData() const
+{
+  return m_vCustomData;
 }
 
 void ezGreyBoxComponent::SetMaterialFile(const char* szFile)
@@ -444,6 +479,13 @@ void ezGreyBoxComponent::OnMsgSetMeshMaterial(ezMsgSetMeshMaterial& ref_msg)
 void ezGreyBoxComponent::OnMsgSetColor(ezMsgSetColor& ref_msg)
 {
   ref_msg.ModifyColor(m_Color);
+
+  InvalidateCachedRenderData();
+}
+
+void ezGreyBoxComponent::OnMsgSetCustomData(ezMsgSetCustomData& ref_msg)
+{
+  m_vCustomData = ref_msg.m_vData;
 
   InvalidateCachedRenderData();
 }

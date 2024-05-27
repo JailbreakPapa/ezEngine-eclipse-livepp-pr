@@ -29,9 +29,6 @@ ezUInt8 ezWindow::s_uiNextUnusedWindowNumber = 0;
 
 ezResult ezWindowCreationDesc::AdjustWindowSizeAndPosition()
 {
-  if (m_WindowMode == ezWindowMode::WindowFixedResolution || m_WindowMode == ezWindowMode::WindowResizable)
-    return EZ_SUCCESS;
-
   ezHybridArray<ezScreenInfo, 2> screens;
   if (ezScreen::EnumerateScreens(screens).Failed() || screens.IsEmpty())
     return EZ_FAILURE;
@@ -62,8 +59,6 @@ ezResult ezWindowCreationDesc::AdjustWindowSizeAndPosition()
     pScreen = &screens[iShowOnMonitor];
   }
 
-  m_Position.Set(pScreen->m_iOffsetX, pScreen->m_iOffsetY);
-
   if (m_WindowMode == ezWindowMode::FullscreenBorderlessNativeResolution)
   {
     m_Resolution.width = pScreen->m_iResolutionX;
@@ -74,6 +69,15 @@ ezResult ezWindowCreationDesc::AdjustWindowSizeAndPosition()
     // clamp the resolution to the native resolution ?
     // m_ClientAreaSize.width = ezMath::Min<ezUInt32>(m_ClientAreaSize.width, pScreen->m_iResolutionX);
     // m_ClientAreaSize.height= ezMath::Min<ezUInt32>(m_ClientAreaSize.height,pScreen->m_iResolutionY);
+  }
+
+  if (m_bCenterWindowOnDisplay)
+  {
+    m_Position.Set(pScreen->m_iOffsetX + (pScreen->m_iResolutionX - (ezInt32)m_Resolution.width) / 2, pScreen->m_iOffsetY + (pScreen->m_iResolutionY - (ezInt32)m_Resolution.height) / 2);
+  }
+  else
+  {
+    m_Position.Set(pScreen->m_iOffsetX, pScreen->m_iOffsetY);
   }
 
   return EZ_SUCCESS;
@@ -117,6 +121,7 @@ void ezWindowCreationDesc::SaveToDDL(ezOpenDdlWriter& ref_writer)
   ezOpenDdlUtils::StoreBool(ref_writer, m_bClipMouseCursor, "ClipMouseCursor");
   ezOpenDdlUtils::StoreBool(ref_writer, m_bShowMouseCursor, "ShowMouseCursor");
   ezOpenDdlUtils::StoreBool(ref_writer, m_bSetForegroundOnInit, "SetForegroundOnInit");
+  ezOpenDdlUtils::StoreBool(ref_writer, m_bCenterWindowOnDisplay, "CenterWindowOnDisplay");
 
   ref_writer.EndObject();
 }
@@ -187,9 +192,11 @@ void ezWindowCreationDesc::LoadFromDDL(const ezOpenDdlReaderElement* pParentElem
 
     if (const ezOpenDdlReaderElement* pSetForegroundOnInit = pDesc->FindChildOfType(ezOpenDdlPrimitiveType::Bool, "SetForegroundOnInit"))
       m_bSetForegroundOnInit = pSetForegroundOnInit->GetPrimitivesBool()[0];
+
+    if (const ezOpenDdlReaderElement* pCenterWindowOnDisplay = pDesc->FindChildOfType(ezOpenDdlPrimitiveType::Bool, "CenterWindowOnDisplay"))
+      m_bCenterWindowOnDisplay = pCenterWindowOnDisplay->GetPrimitivesBool()[0];
   }
 }
-
 
 ezResult ezWindowCreationDesc::LoadFromDDL(ezStringView sFile)
 {

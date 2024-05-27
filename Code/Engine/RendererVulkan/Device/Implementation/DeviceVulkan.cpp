@@ -106,8 +106,6 @@ PFN_vkQueueEndDebugUtilsLabelEXT vkQueueEndDebugUtilsLabelEXTFunc;
 PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginDebugUtilsLabelEXTFunc;
 PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndDebugUtilsLabelEXTFunc;
 PFN_vkCmdInsertDebugUtilsLabelEXT vkCmdInsertDebugUtilsLabelEXTFunc;
-PFN_vkGetPhysicalDeviceFeatures2 vkGetPhysicalDeviceFeatures2Func;
-PFN_vkGetPhysicalDeviceFeatures2KHR vkGetPhysicalDeviceFeatures2KHRFunc;
 
 VkResult vkSetDebugUtilsObjectNameEXT(VkDevice device, const VkDebugUtilsObjectNameInfoEXT* pObjectName)
 {
@@ -142,16 +140,6 @@ void vkCmdEndDebugUtilsLabelEXT(VkCommandBuffer commandBuffer)
 void vkCmdInsertDebugUtilsLabelEXT(VkCommandBuffer commandBuffer, const VkDebugUtilsLabelEXT* pLabelInfo)
 {
   return vkCmdInsertDebugUtilsLabelEXTFunc(commandBuffer, pLabelInfo);
-}
-
-void vkGetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures2* pFeatures)
-{
-  EZ_ASSERT_DEV(vkGetPhysicalDeviceFeatures2KHRFunc != nullptr || vkGetPhysicalDeviceFeatures2Func != nullptr, "");
-  if (vkGetPhysicalDeviceFeatures2KHRFunc != nullptr)
-  {
-    return vkGetPhysicalDeviceFeatures2KHRFunc(physicalDevice, pFeatures);
-  }
-  return vkGetPhysicalDeviceFeatures2Func(physicalDevice, pFeatures);
 }
 
 ezInternal::NewInstance<ezGALDevice> CreateVulkanDevice(ezAllocator* pAllocator, const ezGALDeviceCreationDescription& Description)
@@ -231,8 +219,11 @@ vk::Result ezGALDeviceVulkan::SelectInstanceExtensions(ezHybridArray<const char*
 #else
 #  error "Vulkan platform not supported"
 #endif
-  VK_SUCCEED_OR_RETURN_LOG(AddExtIfSupported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, m_extensions.m_bDebugUtils));
+  AddExtIfSupported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, m_extensions.m_bDebugUtils);
   m_extensions.m_bDebugUtilsMarkers = m_extensions.m_bDebugUtils;
+
+  AddExtIfSupported(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME, m_extensions.m_bExternalMemoryCapabilities);
+  AddExtIfSupported(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME, m_extensions.m_bExternalSemaphoreCapabilities);
 
   return vk::Result::eSuccess;
 }
@@ -270,12 +261,6 @@ vk::Result ezGALDeviceVulkan::SelectDeviceExtensions(vk::DeviceCreateInfo& devic
   };
 
   VK_SUCCEED_OR_RETURN_LOG(AddExtIfSupported(VK_KHR_SWAPCHAIN_EXTENSION_NAME, m_extensions.m_bDeviceSwapChain));
-#if EZ_ENABLED(EZ_PLATFORM_ANDROID)
-  // On android we don't require Vulkan 1.1, so instead we require VK_KHR_maintenance1 so we have the same feature set we need.
-  bool bMaintenance = false;
-  VK_SUCCEED_OR_RETURN_LOG(AddExtIfSupported(VK_KHR_MAINTENANCE1_EXTENSION_NAME, bMaintenance));
-#endif
-
   AddExtIfSupported(VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME, m_extensions.m_bShaderViewportIndexLayer);
 
   vk::PhysicalDeviceFeatures2 features;
@@ -323,6 +308,8 @@ vk::Result ezGALDeviceVulkan::SelectDeviceExtensions(vk::DeviceCreateInfo& devic
     m_extensions.m_timelineSemaphoresEXT.timelineSemaphore = true;
   }
 
+  AddExtIfSupported(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME, m_extensions.m_bExternalMemory);
+  AddExtIfSupported(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME, m_extensions.m_bExternalSemaphore);
 #if EZ_ENABLED(EZ_PLATFORM_LINUX) || EZ_ENABLED(EZ_PLATFORM_ANDROID)
   AddExtIfSupported(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME, m_extensions.m_bExternalMemoryFd);
   AddExtIfSupported(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME, m_extensions.m_bExternalSemaphoreFd);
@@ -336,6 +323,11 @@ vk::Result ezGALDeviceVulkan::SelectDeviceExtensions(vk::DeviceCreateInfo& devic
 
 #define EZ_GET_INSTANCE_PROC_ADDR(name) m_extensions.pfn_##name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddr(m_instance, #name));
 
+ezStringView ezGALDeviceVulkan::GetRendererPlatform()
+{
+  return "Vulkan";
+}
+
 ezResult ezGALDeviceVulkan::InitPlatform()
 {
   EZ_LOG_BLOCK("ezGALDeviceVulkan::InitPlatform");
@@ -343,15 +335,12 @@ ezResult ezGALDeviceVulkan::InitPlatform()
   const char* layers[] = {"VK_LAYER_KHRONOS_validation"};
   {
     // Create instance
-    // We either have to use Vulkan 1.1 or require VK_KHR_maintenance1 because of two features:
+    // We require Vulkan 1.1 because of three features:
     // 1. Descriptor set pools return vk::Result::eErrorOutOfPoolMemory if exhausted. Removing the requirement to count usage yourself.
     // 2. Viewport height can be negative which performs y-inversion of the clip-space to framebuffer-space transform.
+    // 3. Vulkan 1.0 is a pain to work with.
     vk::ApplicationInfo applicationInfo = {};
-#if EZ_ENABLED(EZ_PLATFORM_ANDROID)
-    applicationInfo.apiVersion = VK_API_VERSION_1_0;
-#else
     applicationInfo.apiVersion = VK_API_VERSION_1_1;
-#endif
     applicationInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0); // TODO put ezEngine version here
     applicationInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);      // TODO put ezEngine version here
     applicationInfo.pApplicationName = "ezEngine";
@@ -389,7 +378,42 @@ ezResult ezGALDeviceVulkan::InitPlatform()
       }
 
       if (m_extensions.m_bDebugUtils)
+      {
+        debugCreateInfo.pNext = instanceCreateInfo.pNext;
         instanceCreateInfo.pNext = &debugCreateInfo;
+      }
+
+      // Comment out if to force enable synchronization validation on any platform.
+      if (false)
+      {
+        const char* layer_name = "VK_LAYER_KHRONOS_validation";
+
+        const VkBool32 setting_validate_core = VK_TRUE;
+        const VkBool32 setting_validate_sync = VK_TRUE;
+        const VkBool32 setting_thread_safety = VK_TRUE;
+        const char* setting_debug_action[] = {"VK_DBG_LAYER_ACTION_LOG_MSG"};
+        const char* setting_report_flags[] = {"info", "warn", "perf", "error", "debug"};
+        const VkBool32 setting_enable_message_limit = VK_TRUE;
+        const int32_t setting_duplicate_message_limit = 3;
+
+        const VkLayerSettingEXT settings[] = {
+          {layer_name, "sync_queue_submit", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &setting_validate_sync},
+          {layer_name, "validate_core", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &setting_validate_core},
+          {layer_name, "validate_sync", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &setting_validate_sync},
+          {layer_name, "thread_safety", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &setting_thread_safety},
+          {layer_name, "debug_action", VK_LAYER_SETTING_TYPE_STRING_EXT, 1, setting_debug_action},
+          {layer_name, "report_flags", VK_LAYER_SETTING_TYPE_STRING_EXT, EZ_ARRAY_SIZE(setting_report_flags), setting_report_flags},
+          {layer_name, "enable_message_limit", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &setting_enable_message_limit},
+          {layer_name, "duplicate_message_limit", VK_LAYER_SETTING_TYPE_INT32_EXT, 1, &setting_duplicate_message_limit}};
+
+        VkLayerSettingsCreateInfoEXT layer_settings_create_info = {
+          VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT, nullptr, EZ_ARRAY_SIZE(settings), settings};
+
+        {
+          layer_settings_create_info.pNext = instanceCreateInfo.pNext;
+          instanceCreateInfo.pNext = &layer_settings_create_info;
+        }
+      }
     }
 
     m_instance = vk::createInstance(instanceCreateInfo);
@@ -429,11 +453,11 @@ ezResult ezGALDeviceVulkan::InitPlatform()
     // TODO making sure we have a hardware device?
     m_physicalDevice = physicalDevices[0];
     m_properties = m_physicalDevice.getProperties();
-    ezLog::Info("Selected physical device \"{}\" for device creation.", m_properties.deviceName);
+    ezLog::Warning("Selected physical device \"{}\" for device creation.", m_properties.deviceName);
 
     // This is a workaround for broken lavapipe drivers which cannot handle label scopes that span across multiple command buffers.
     ezStringBuilder sDeviceName = ezStringUtf8(m_properties.deviceName).GetView();
-    if (sDeviceName.Compare_NoCase("LLVMPIPE"))
+    if (sDeviceName.FindSubString_NoCase("LLVMPIPE") != nullptr)
     {
       m_extensions.m_bDebugUtilsMarkers = false;
     }
@@ -512,11 +536,6 @@ ezResult ezGALDeviceVulkan::InitPlatform()
       transferQueueCreateInfo.queueCount = 1;
       transferQueueCreateInfo.queueFamilyIndex = m_transferQueue.m_uiQueueFamily;
     }
-
-    // These didn't exist in Vulkan 1.0. Some runtimes either expose the KHR extension or the Vulkan 1.1 spec version.
-    vkGetPhysicalDeviceFeatures2Func = (PFN_vkGetPhysicalDeviceFeatures2)m_instance.getProcAddr("vkGetPhysicalDeviceFeatures2");
-    vkGetPhysicalDeviceFeatures2KHRFunc = (PFN_vkGetPhysicalDeviceFeatures2KHR)m_instance.getProcAddr("vkGetPhysicalDeviceFeatures2KHR");
-    EZ_ASSERT_DEV(vkGetPhysicalDeviceFeatures2Func || vkGetPhysicalDeviceFeatures2Func, "Device does not support vkGetPhysicalDeviceFeatures2 extension");
 
     // #TODO_VULKAN test that this returns the same as 'layers' passed into the instance.
     ezUInt32 uiLayers;
@@ -1173,10 +1192,9 @@ void ezGALDeviceVulkan::DestroySharedTexturePlatform(ezGALTexture* pTexture)
   EZ_DELETE(&m_Allocator, pVulkanTexture);
 }
 
-ezGALResourceView* ezGALDeviceVulkan::CreateResourceViewPlatform(
-  ezGALResourceBase* pResource, const ezGALResourceViewCreationDescription& Description)
+ezGALTextureResourceView* ezGALDeviceVulkan::CreateResourceViewPlatform(ezGALTexture* pResource, const ezGALTextureResourceViewCreationDescription& Description)
 {
-  ezGALResourceViewVulkan* pResourceView = EZ_NEW(&m_Allocator, ezGALResourceViewVulkan, pResource, Description);
+  ezGALTextureResourceViewVulkan* pResourceView = EZ_NEW(&m_Allocator, ezGALTextureResourceViewVulkan, pResource, Description);
 
   if (!pResourceView->InitPlatform(this).Succeeded())
   {
@@ -1187,9 +1205,29 @@ ezGALResourceView* ezGALDeviceVulkan::CreateResourceViewPlatform(
   return pResourceView;
 }
 
-void ezGALDeviceVulkan::DestroyResourceViewPlatform(ezGALResourceView* pResourceView)
+void ezGALDeviceVulkan::DestroyResourceViewPlatform(ezGALTextureResourceView* pResourceView)
 {
-  ezGALResourceViewVulkan* pVulkanResourceView = static_cast<ezGALResourceViewVulkan*>(pResourceView);
+  ezGALTextureResourceViewVulkan* pVulkanResourceView = static_cast<ezGALTextureResourceViewVulkan*>(pResourceView);
+  pVulkanResourceView->DeInitPlatform(this).IgnoreResult();
+  EZ_DELETE(&m_Allocator, pVulkanResourceView);
+}
+
+ezGALBufferResourceView* ezGALDeviceVulkan::CreateResourceViewPlatform(ezGALBuffer* pResource, const ezGALBufferResourceViewCreationDescription& Description)
+{
+  ezGALBufferResourceViewVulkan* pResourceView = EZ_NEW(&m_Allocator, ezGALBufferResourceViewVulkan, pResource, Description);
+
+  if (!pResourceView->InitPlatform(this).Succeeded())
+  {
+    EZ_DELETE(&m_Allocator, pResourceView);
+    return nullptr;
+  }
+
+  return pResourceView;
+}
+
+void ezGALDeviceVulkan::DestroyResourceViewPlatform(ezGALBufferResourceView* pResourceView)
+{
+  ezGALBufferResourceViewVulkan* pVulkanResourceView = static_cast<ezGALBufferResourceViewVulkan*>(pResourceView);
   pVulkanResourceView->DeInitPlatform(this).IgnoreResult();
   EZ_DELETE(&m_Allocator, pVulkanResourceView);
 }
@@ -1215,10 +1253,10 @@ void ezGALDeviceVulkan::DestroyRenderTargetViewPlatform(ezGALRenderTargetView* p
   EZ_DELETE(&m_Allocator, pVulkanRenderTargetView);
 }
 
-ezGALUnorderedAccessView* ezGALDeviceVulkan::CreateUnorderedAccessViewPlatform(
-  ezGALResourceBase* pTextureOfBuffer, const ezGALUnorderedAccessViewCreationDescription& Description)
+ezGALTextureUnorderedAccessView* ezGALDeviceVulkan::CreateUnorderedAccessViewPlatform(
+  ezGALTexture* pTextureOfBuffer, const ezGALTextureUnorderedAccessViewCreationDescription& Description)
 {
-  ezGALUnorderedAccessViewVulkan* pUnorderedAccessView = EZ_NEW(&m_Allocator, ezGALUnorderedAccessViewVulkan, pTextureOfBuffer, Description);
+  ezGALTextureUnorderedAccessViewVulkan* pUnorderedAccessView = EZ_NEW(&m_Allocator, ezGALTextureUnorderedAccessViewVulkan, pTextureOfBuffer, Description);
 
   if (!pUnorderedAccessView->InitPlatform(this).Succeeded())
   {
@@ -1229,14 +1267,33 @@ ezGALUnorderedAccessView* ezGALDeviceVulkan::CreateUnorderedAccessViewPlatform(
   return pUnorderedAccessView;
 }
 
-void ezGALDeviceVulkan::DestroyUnorderedAccessViewPlatform(ezGALUnorderedAccessView* pUnorderedAccessView)
+void ezGALDeviceVulkan::DestroyUnorderedAccessViewPlatform(ezGALTextureUnorderedAccessView* pUnorderedAccessView)
 {
-  ezGALUnorderedAccessViewVulkan* pUnorderedAccessViewVulkan = static_cast<ezGALUnorderedAccessViewVulkan*>(pUnorderedAccessView);
+  ezGALTextureUnorderedAccessViewVulkan* pUnorderedAccessViewVulkan = static_cast<ezGALTextureUnorderedAccessViewVulkan*>(pUnorderedAccessView);
   pUnorderedAccessViewVulkan->DeInitPlatform(this).IgnoreResult();
   EZ_DELETE(&m_Allocator, pUnorderedAccessViewVulkan);
 }
 
+ezGALBufferUnorderedAccessView* ezGALDeviceVulkan::CreateUnorderedAccessViewPlatform(
+  ezGALBuffer* pBufferOfBuffer, const ezGALBufferUnorderedAccessViewCreationDescription& Description)
+{
+  ezGALBufferUnorderedAccessViewVulkan* pUnorderedAccessView = EZ_NEW(&m_Allocator, ezGALBufferUnorderedAccessViewVulkan, pBufferOfBuffer, Description);
 
+  if (!pUnorderedAccessView->InitPlatform(this).Succeeded())
+  {
+    EZ_DELETE(&m_Allocator, pUnorderedAccessView);
+    return nullptr;
+  }
+
+  return pUnorderedAccessView;
+}
+
+void ezGALDeviceVulkan::DestroyUnorderedAccessViewPlatform(ezGALBufferUnorderedAccessView* pUnorderedAccessView)
+{
+  ezGALBufferUnorderedAccessViewVulkan* pUnorderedAccessViewVulkan = static_cast<ezGALBufferUnorderedAccessViewVulkan*>(pUnorderedAccessView);
+  pUnorderedAccessViewVulkan->DeInitPlatform(this).IgnoreResult();
+  EZ_DELETE(&m_Allocator, pUnorderedAccessViewVulkan);
+}
 
 // Other rendering creation functions
 ezGALQuery* ezGALDeviceVulkan::CreateQueryPlatform(const ezGALQueryCreationDescription& Description)
