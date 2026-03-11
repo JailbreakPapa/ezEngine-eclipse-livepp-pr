@@ -1,5 +1,6 @@
 #include <RendererCore/RendererCorePCH.h>
 
+#include <RendererCore/Lights/SSRDataProvider.h>
 #include <RendererCore/Pipeline/Passes/OpaqueForwardRenderPass.h>
 #include <RendererCore/RenderContext/RenderContext.h>
 #include <RendererCore/Textures/Texture2DResource.h>
@@ -70,6 +71,13 @@ void ezOpaqueForwardRenderPass::SetupResources(ezGALCommandEncoder* pCommandEnco
     else
     {
       bindGroupRenderPass.BindTexture("SSAOTexture", m_hWhiteTexture, ezResourceAcquireMode::BlockTillLoaded);
+    }
+
+    // SSR texture (from previous frame, if available)
+    auto pSSRData = GetPipeline()->GetFrameDataProvider<ezSSRDataProvider>()->GetData(renderViewContext);
+    if (pSSRData != nullptr && !pSSRData->m_hSSRTexture.IsInvalidated())
+    {
+      pSSRData->BindResources(renderViewContext.m_pRenderContext);
     }
   }
 }

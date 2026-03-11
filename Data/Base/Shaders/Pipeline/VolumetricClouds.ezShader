@@ -1,0 +1,231 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+SHADING_QUALITY = SHADING_QUALITY_NORMAL
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/VolumetricUtils.h>
+#include <Shaders/Common/LightData.h>
+#include "VolumetricCloudsConstants.h"
+
+// Output at quarter resolution
+RWTexture2D<float4> CloudOutput;
+
+Texture2DArray SceneDepth;
+
+// Procedural noise functions for cloud shape
+float Hash(float3 p)
+{
+  p = frac(p * float3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return frac((p.x + p.y) * p.z);
+}
+
+float ValueNoise(float3 p)
+{
+  float3 i = floor(p);
+  float3 f = frac(p);
+  f = f * f * (3.0 - 2.0 * f);
+
+  return lerp(
+    lerp(
+      lerp(Hash(i + float3(0, 0, 0)), Hash(i + float3(1, 0, 0)), f.x),
+      lerp(Hash(i + float3(0, 1, 0)), Hash(i + float3(1, 1, 0)), f.x),
+      f.y),
+    lerp(
+      lerp(Hash(i + float3(0, 0, 1)), Hash(i + float3(1, 0, 1)), f.x),
+      lerp(Hash(i + float3(0, 1, 1)), Hash(i + float3(1, 1, 1)), f.x),
+      f.y),
+    f.z);
+}
+
+float FBM(float3 p, int octaves)
+{
+  float value = 0.0;
+  float amplitude = 0.5;
+  for (int i = 0; i < octaves; ++i)
+  {
+    value += amplitude * ValueNoise(p);
+    amplitude *= 0.5;
+    p *= 2.0;
+  }
+  return value;
+}
+
+float Remap(float value, float oldMin, float oldMax, float newMin, float newMax)
+{
+  return newMin + (saturate((value - oldMin) / (oldMax - oldMin))) * (newMax - newMin);
+}
+
+// Sample cloud density at a world position
+float SampleCloudDensity(float3 worldPos, float heightFraction)
+{
+  // Wind offset
+  float3 windOffset = CloudWindDirection * CloudWindSpeed * WorldTime;
+  float3 samplePos = worldPos + windOffset;
+
+  // Procedural weather coverage (large-scale noise on XY plane)
+  float2 weatherCoord = samplePos.xy * 0.00002;
+  float weatherNoise = ValueNoise(float3(weatherCoord, 0.0));
+  float coverage = weatherNoise * CloudCoverage;
+
+  // Shape noise (low frequency, 3 octaves of FBM)
+  float3 shapeCoord = samplePos * CloudShapeScale * 0.0001;
+  float shapeNoiseSample = FBM(shapeCoord, 3);
+
+  // Height gradient: clouds are denser in the middle of the layer
+  float heightGradient = saturate(Remap(heightFraction, 0.0, 0.2, 0.0, 1.0)) *
+                         saturate(Remap(heightFraction, 0.8, 1.0, 1.0, 0.0));
+
+  // Base cloud shape
+  float baseCloud = saturate(Remap(shapeNoiseSample * heightGradient, 1.0 - coverage, 1.0, 0.0, 1.0));
+
+  if (baseCloud <= 0.0)
+    return 0.0;
+
+  // Detail noise (high frequency erosion, 2 octaves)
+  float3 detailCoord = samplePos * CloudDetailScale * 0.001 - windOffset * 0.5;
+  float detailNoiseSample = FBM(detailCoord, 2);
+
+  // Erode with detail - more at edges (lower density)
+  float detailModifier = lerp(detailNoiseSample, 1.0 - detailNoiseSample, saturate(heightFraction * 5.0));
+  float finalCloud = saturate(Remap(baseCloud, detailModifier * 0.2, 1.0, 0.0, 1.0));
+
+  return finalCloud * CloudDensity;
+}
+
+// Light marching for cloud self-shadowing
+float LightMarch(float3 position, float3 lightDir)
+{
+  float layerThickness = CloudLayerTopAltitude - CloudLayerBottomAltitude;
+  float stepSize = layerThickness / 6.0;
+  float totalDensity = 0.0;
+
+  for (int i = 0; i < 6; ++i)
+  {
+    float3 samplePos = position + lightDir * stepSize * (float(i) + 0.5);
+
+    float heightFraction = saturate((samplePos.z - CloudLayerBottomAltitude) / layerThickness);
+    if (heightFraction < 0.0 || heightFraction > 1.0)
+      break;
+
+    totalDensity += SampleCloudDensity(samplePos, heightFraction) * stepSize;
+  }
+
+  return BeerLambert(totalDensity * CloudAbsorption, 1.0);
+}
+
+[numthreads(CLOUD_THREAD_GROUP_X, CLOUD_THREAD_GROUP_Y, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint2 outputSize;
+  CloudOutput.GetDimensions(outputSize.x, outputSize.y);
+
+  if (any(DTid.xy >= outputSize))
+    return;
+
+  // Quarter resolution UV
+  float2 uv = (float2(DTid.xy) + 0.5) / float2(outputSize);
+
+  // Dithered jitter for temporal stability
+  float jitter = Hash(float3(DTid.xy, FrameIndex)) * 0.5;
+
+  // Reconstruct ray from camera
+  float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, 0.5, 1.0));
+  float3 rayDir = normalize(worldPosH.xyz / worldPosH.w - GetCameraPosition());
+  float3 rayOrigin = GetCameraPosition();
+
+  // Scene depth for early out
+  float sceneDepth = SceneDepth.SampleLevel(PointClampSampler, float3(uv, 0), 0).r;
+  float linearSceneDepth = LinearizeZBufferDepth(sceneDepth);
+
+  // Ray-layer intersection (horizontal layer at CloudLayerBottomAltitude to CloudLayerTopAltitude)
+  float tBottom = (CloudLayerBottomAltitude - rayOrigin.z) / rayDir.z;
+  float tTop = (CloudLayerTopAltitude - rayOrigin.z) / rayDir.z;
+
+  float tMin = min(tBottom, tTop);
+  float tMax = max(tBottom, tTop);
+
+  // Camera inside the cloud layer
+  if (rayOrigin.z > CloudLayerBottomAltitude && rayOrigin.z < CloudLayerTopAltitude)
+  {
+    tMin = 0.0;
+  }
+
+  // Early out: no intersection or behind geometry
+  if (tMin < 0.0 && tMax < 0.0)
+  {
+    CloudOutput[DTid.xy] = float4(0, 0, 0, 1);
+    return;
+  }
+
+  tMin = max(tMin, 0.0);
+  if (tMin > linearSceneDepth)
+  {
+    CloudOutput[DTid.xy] = float4(0, 0, 0, 1);
+    return;
+  }
+  tMax = min(tMax, linearSceneDepth);
+
+  // Get sun direction for lighting
+  float3 sunDir = float3(0, 0, 1);
+  float3 sunColor = float3(1, 1, 1);
+  if (BrightestDirectionalLightIndex != 0xFFFFFFFF)
+  {
+    ezPerLightData sunLight = perLightDataBuffer[BrightestDirectionalLightIndex];
+    sunDir = GetLightDirection(sunLight);
+    sunColor = GetLightColor(sunLight) * sunLight.intensity;
+  }
+
+  // Ray march through cloud layer
+  float layerThickness = CloudLayerTopAltitude - CloudLayerBottomAltitude;
+  int numSteps = 64;
+  float stepSize = (tMax - tMin) / float(numSteps);
+
+  float3 accumulatedColor = 0;
+  float accumulatedTransmittance = 1.0;
+
+  for (int i = 0; i < numSteps; ++i)
+  {
+    if (accumulatedTransmittance < 0.01)
+      break;
+
+    float t = tMin + (float(i) + jitter) * stepSize;
+    float3 samplePos = rayOrigin + rayDir * t;
+
+    float heightFraction = saturate((samplePos.z - CloudLayerBottomAltitude) / layerThickness);
+    float density = SampleCloudDensity(samplePos, heightFraction);
+
+    if (density > 0.0)
+    {
+      // Light contribution
+      float lightTransmittance = LightMarch(samplePos, sunDir);
+
+      // Direct light
+      float cosTheta = dot(rayDir, sunDir);
+      float phase = HenyeyGreensteinDualLobe(cosTheta, CloudPhaseG);
+
+      // Silver lining effect (forward scattering at cloud edges)
+      float silverLining = SilverLiningIntensity * pow(saturate(cosTheta), SilverLiningSpread);
+
+      float3 lightEnergy = (sunColor * lightTransmittance * (phase + silverLining)) + CloudAmbientColor;
+
+      // Beer-Lambert for this step
+      float transmittance = BeerLambert(density * CloudAbsorption, stepSize);
+
+      // Integrate
+      float3 integScatter = CloudScatterColor * lightEnergy * (1.0 - transmittance);
+      accumulatedColor += accumulatedTransmittance * integScatter;
+      accumulatedTransmittance *= transmittance;
+    }
+  }
+
+  // Output: inscatter (RGB) and transmittance (A)
+  CloudOutput[DTid.xy] = float4(accumulatedColor, accumulatedTransmittance);
+}

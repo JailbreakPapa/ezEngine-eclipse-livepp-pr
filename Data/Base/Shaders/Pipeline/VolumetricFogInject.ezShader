@@ -1,0 +1,100 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+SHADING_QUALITY = SHADING_QUALITY_NORMAL
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/LightData.h>
+#include <Shaders/Common/VolumetricUtils.h>
+#include "VolumetricFogConstants.h"
+
+RWTexture3D<float4> FroxelGrid;
+
+[numthreads(VOLUMETRIC_FOG_THREAD_GROUP_X, VOLUMETRIC_FOG_THREAD_GROUP_Y, VOLUMETRIC_FOG_THREAD_GROUP_Z)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint3 gridSize = uint3(FroxelGridSizeX, FroxelGridSizeY, FroxelGridSizeZ);
+
+  if (any(DTid.xy >= gridSize.xy))
+    return;
+
+  // Process all Z slices for this XY thread
+  for (uint z = 0; z < gridSize.z; ++z)
+  {
+    uint3 froxelCoord = uint3(DTid.xy, z);
+
+    // Compute world position for this froxel center
+    float sliceNorm = (float(z) + 0.5) / float(gridSize.z);
+    float linearDepth = FroxelNearPlane * exp(sliceNorm * log(FroxelFarPlane / FroxelNearPlane));
+
+    float2 uv = (float2(froxelCoord.xy) + 0.5) / float2(gridSize.xy);
+    float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+
+    float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, 0.5, 1.0));
+    float3 viewDir = normalize(worldPosH.xyz / worldPosH.w - GetCameraPosition());
+    float3 worldPosition = GetCameraPosition() + viewDir * linearDepth;
+
+    // Compute fog density at this position
+    float density = FogDensityScale;
+    density *= HeightDensity(worldPosition.z, FogBaseHeight, FogHeightDensityFalloff);
+
+    // Skip very low density froxels
+    if (density < 0.0001)
+    {
+      FroxelGrid[froxelCoord] = float4(0, 0, 0, 0);
+      continue;
+    }
+
+    // Accumulate in-scattered light from all lights
+    float3 inScattered = AmbientLight * FogAlbedo * density;
+
+    for (uint i = 0; i < NumLights; ++i)
+    {
+      ezPerLightData lightData = perLightDataBuffer[i];
+      uint type = GetLightType(lightData);
+
+      float3 lightColor = GetLightColor(lightData) * lightData.intensity;
+      float3 lightDir = GetLightDirection(lightData);
+      float attenuation = 1.0;
+
+      if (type == LIGHT_TYPE_POINT || type == LIGHT_TYPE_SPOT)
+      {
+        float3 lightVec = lightData.position - worldPosition;
+        float sqrDist = dot(lightVec, lightVec);
+        attenuation = (1.0 / max(sqrDist, 0.01 * 0.01));
+        float factor = sqrDist * lightData.invSqrAttRadius;
+        float smoothFactor = saturate(1.0 - factor * factor);
+        attenuation *= smoothFactor * smoothFactor;
+
+        lightVec *= rsqrt(sqrDist);
+
+        if (type == LIGHT_TYPE_SPOT)
+        {
+          float2 spotParams = RG16FToFloat2(lightData.spotOrFillParams);
+          float cosAngle = dot(lightDir, lightVec);
+          float spotAtten = saturate(cosAngle * spotParams.x + spotParams.y);
+          attenuation *= spotAtten * spotAtten;
+        }
+
+        lightDir = lightVec;
+      }
+
+      if (attenuation < 0.0001)
+        continue;
+
+      // Phase function
+      float cosTheta = dot(normalize(viewDir), lightDir);
+      float phase = HenyeyGreensteinDualLobe(cosTheta, FogAnisotropy);
+
+      inScattered += lightColor * FogAlbedo * density * attenuation * phase;
+    }
+
+    // Store inscattered light (RGB) and density (A) for integration pass
+    FroxelGrid[froxelCoord] = float4(inScattered, density);
+  }
+}

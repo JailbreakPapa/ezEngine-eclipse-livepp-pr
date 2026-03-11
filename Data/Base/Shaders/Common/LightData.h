@@ -179,6 +179,9 @@ struct ezPerDecalAtlasData
     COLOR4F(FogColor);
     FLOAT1(FogInvSkyDistance);
     FLOAT1(FogStartDistance);
+
+    UINT1(VolumetricFogEnabled);
+    UINT1(VSMEnabled);
 };
 
 #define NUM_CLUSTERS_X 16

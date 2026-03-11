@@ -1,0 +1,104 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "SSRConstants.h"
+
+Texture2D<float4> SSRCurrentInput;
+Texture2D<float4> SSRHistoryInput;
+Texture2DArray SceneDepth;
+
+RWTexture2D<float4> SSRTemporalOutput;
+
+float3 ClipAABB(float3 color, float3 minColor, float3 maxColor)
+{
+  float3 center = 0.5 * (maxColor + minColor);
+  float3 halfExtent = 0.5 * (maxColor - minColor) + 0.001;
+  float3 offset = color - center;
+  float3 ts = abs(offset / halfExtent);
+  float t = max(ts.x, max(ts.y, ts.z));
+  if (t > 1.0)
+    return center + offset / t;
+  return color;
+}
+
+[numthreads(8, 8, 1)]
+void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+#if CAMERA_MODE == CAMERA_MODE_STEREO
+  s_ActiveCameraEyeIndex = 0;
+#endif
+
+  uint2 pixelCoord = dispatchThreadId.xy;
+
+  if (pixelCoord.x >= SSRResolutionX || pixelCoord.y >= SSRResolutionY)
+    return;
+
+  float2 uv = (float2(pixelCoord) + 0.5) * SSRInverseResolution;
+
+  // Sample current frame's SSR result
+  float4 currentSSR = SSRCurrentInput.Load(int3(pixelCoord, 0));
+
+  // Reproject to previous frame
+  float3 uvSlice = float3(uv, s_ActiveCameraEyeIndex);
+  float depthFromZBuffer = SceneDepth.SampleLevel(PointClampSampler, uvSlice, 0).r;
+
+  // Reconstruct clip position and project to previous frame
+  float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depthFromZBuffer, 1.0));
+  float3 worldPos = worldPosH.xyz / worldPosH.w;
+  float4 prevClipPos = mul(SSRPrevWorldToClipMatrix, float4(worldPos, 1.0));
+  float2 prevUV = (prevClipPos.xy / prevClipPos.w) * float2(0.5, -0.5) + 0.5;
+
+  // Sample history at reprojected position
+  float4 historySSR = float4(0, 0, 0, 0);
+  bool validHistory = false;
+
+  if (all(prevUV >= 0.0) && all(prevUV <= 1.0))
+  {
+    int2 histCoord = int2(prevUV * float2(SSRResolutionX, SSRResolutionY));
+    historySSR = SSRHistoryInput.Load(int3(histCoord, 0));
+    validHistory = true;
+  }
+
+  // Neighborhood clamping to reduce ghosting
+  if (validHistory)
+  {
+    float3 minColor = currentSSR.rgb;
+    float3 maxColor = currentSSR.rgb;
+
+    // Sample 3x3 neighborhood of current frame
+    [unroll]
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+      [unroll]
+      for (int dx = -1; dx <= 1; ++dx)
+      {
+        if (dx == 0 && dy == 0)
+          continue;
+
+        int2 neighborCoord = int2(pixelCoord) + int2(dx, dy);
+        neighborCoord = clamp(neighborCoord, int2(0, 0), int2(SSRResolutionX - 1, SSRResolutionY - 1));
+        float3 neighborColor = SSRCurrentInput.Load(int3(neighborCoord, 0)).rgb;
+        minColor = min(minColor, neighborColor);
+        maxColor = max(maxColor, neighborColor);
+      }
+    }
+
+    // Clamp history to the neighborhood AABB
+    historySSR.rgb = ClipAABB(historySSR.rgb, minColor, maxColor);
+    historySSR.a = clamp(historySSR.a, 0.0, 1.0);
+  }
+
+  // Blend current with history
+  float blendWeight = validHistory ? SSRTemporalBlendWeight : 1.0;
+  float4 result = lerp(historySSR, currentSSR, blendWeight);
+
+  SSRTemporalOutput[pixelCoord] = result;
+}

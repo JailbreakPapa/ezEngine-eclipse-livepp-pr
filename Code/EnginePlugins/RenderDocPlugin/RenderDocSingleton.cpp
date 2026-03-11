@@ -39,8 +39,8 @@ ezRenderDoc::ezRenderDoc()
   if (pRENDERDOC_GetAPI RenderDoc_GetAPI = (pRENDERDOC_GetAPI)GetProcAddress(dllHandle, "RENDERDOC_GetAPI"))
   {
     void* pApi = nullptr;
-    RenderDoc_GetAPI(eRENDERDOC_API_Version_1_4_0, &pApi);
-    m_pRenderDocAPI = (RENDERDOC_API_1_4_1*)pApi;
+    RenderDoc_GetAPI(eRENDERDOC_API_Version_1_7_0, &pApi);
+    m_pRenderDocAPI = (RENDERDOC_API_1_7_0*)pApi;
   }
 
   if (m_pRenderDocAPI)

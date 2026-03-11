@@ -11,7 +11,7 @@ o
 		s %AssetType{"Scene"}
 		VarArray %Dependencies{}
 		Uuid %DocumentID{u4{7297922959506964864,5177324930371449723}}
-		u4 %Hash{10610556965687158804}
+		u4 %Hash{2757597398670836985}
 		VarArray %MetaInfo{}
 		VarArray %Outputs{}
 		VarArray %PackageDeps
@@ -6365,6 +6365,7 @@ o
 		b %OnDemandUpdate{1}
 		s %ProxyMesh{""}
 		s %RmlFile{"{ 85b1daee-d583-4146-ae88-c628e3ead476 }"}
+		b %SendEventMessage{0}
 		Vec2u %TextureSize{u3{512,512}}
 		s %TextureSlotName{"BaseTexture"}
 	}
@@ -6916,12 +6917,13 @@ o
 {
 	Uuid %id{u4{10050329411671958718,4907738763543051917}}
 	s %t{"ezJoltDynamicActorComponent"}
-	u3 %v{7}
+	u3 %v{8}
 	p
 	{
 		b %Active{1}
 		b %AllowSleeping{1}
 		f %AngularDamping{0xCDCC4C3E}
+		f %BuoyancyFactor{0xCDCC8C3F}
 		Vec3 %CenterOfMass{f{0,0,0}}
 		u1 %CollisionLayer{0}
 		b %ContinuousCollisionDetection{0}
@@ -9372,12 +9374,13 @@ o
 {
 	Uuid %id{u4{4419099002648726716,5164655309980221281}}
 	s %t{"ezJoltDynamicActorComponent"}
-	u3 %v{7}
+	u3 %v{8}
 	p
 	{
 		b %Active{1}
 		b %AllowSleeping{1}
 		f %AngularDamping{0xCDCC4C3E}
+		f %BuoyancyFactor{0xCDCC8C3F}
 		Vec3 %CenterOfMass{f{0,0,0}}
 		u1 %CollisionLayer{0}
 		b %ContinuousCollisionDetection{0}
@@ -13644,13 +13647,13 @@ o
 		ColorGamma %LightColor{u1{255,255,255,255}}
 		f %MinShadowRange{0x0000F041}
 		f %NearPlaneOffset{0x0000C842}
-		u3 %NumCascades{2}
+		u3 %NumCascades{4}
 		f %PenumbraSize{0xCDCC4C3D}
 		f %SlopeBias{0x0000803E}
 		f %SpecularMultiplier{0x0000803F}
 		f %SplitModeWeight{0x9A99193F}
 		u3 %Temperature{6550}
-		b %TransparentShadows{0}
+		b %TransparentShadows{1}
 		b %UseColorTemperature{0}
 	}
 }
@@ -18533,6 +18536,7 @@ o
 		b %OnDemandUpdate{1}
 		s %ProxyMesh{""}
 		s %RmlFile{"{ 85b1daee-d583-4146-ae88-c628e3ead476 }"}
+		b %SendEventMessage{0}
 		Vec2u %TextureSize{u3{512,512}}
 		s %TextureSlotName{"BaseTexture"}
 	}
@@ -18676,12 +18680,13 @@ o
 {
 	Uuid %id{u4{13223410274057601876,9776998628203296137}}
 	s %t{"ezJoltDynamicActorComponent"}
-	u3 %v{7}
+	u3 %v{8}
 	p
 	{
 		b %Active{1}
 		b %AllowSleeping{1}
 		f %AngularDamping{0xCDCC4C3E}
+		f %BuoyancyFactor{0xCDCC8C3F}
 		Vec3 %CenterOfMass{f{0,0,0}}
 		u1 %CollisionLayer{0}
 		b %ContinuousCollisionDetection{0}
@@ -35969,7 +35974,7 @@ o
 		s %PluginName{"ezEditorPluginJolt"}
 		VarArray %Properties{}
 		s %TypeName{"ezJoltDynamicActorComponent"}
-		u3 %TypeVersion{7}
+		u3 %TypeVersion{8}
 	}
 }
 o
@@ -36099,7 +36104,7 @@ o
 		s %PluginName{"ezEditorPluginRmlUi"}
 		VarArray %Properties{}
 		s %TypeName{"ezRmlUiCanvasComponentBase"}
-		u3 %TypeVersion{1}
+		u3 %TypeVersion{2}
 	}
 }
 o

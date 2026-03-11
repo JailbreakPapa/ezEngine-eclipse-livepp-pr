@@ -1,0 +1,63 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "VolumetricFogConstants.h"
+
+RWTexture3D<float4> FroxelGrid;
+Texture3D<float4> HistoryFroxelGrid;
+
+[numthreads(VOLUMETRIC_FOG_THREAD_GROUP_X, VOLUMETRIC_FOG_THREAD_GROUP_Y, VOLUMETRIC_FOG_THREAD_GROUP_Z)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint3 gridSize = uint3(FroxelGridSizeX, FroxelGridSizeY, FroxelGridSizeZ);
+
+  if (any(DTid.xy >= gridSize.xy))
+    return;
+
+  for (uint z = 0; z < gridSize.z; ++z)
+  {
+    uint3 froxelCoord = uint3(DTid.xy, z);
+
+    float4 current = FroxelGrid[froxelCoord];
+
+    // Reconstruct world position for this froxel
+    float sliceNorm = (float(z) + 0.5) / float(gridSize.z);
+    float linearDepth = FroxelNearPlane * exp(sliceNorm * log(FroxelFarPlane / FroxelNearPlane));
+
+    float2 uv = (float2(froxelCoord.xy) + 0.5) / float2(gridSize.xy);
+    float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+
+    float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, 0.5, 1.0));
+    float3 viewDir = normalize(worldPosH.xyz / worldPosH.w - GetCameraPosition());
+    float3 worldPosition = GetCameraPosition() + viewDir * linearDepth;
+
+    // Reproject to previous frame's clip space
+    float4 prevClip = mul(PrevWorldToClipMatrix, float4(worldPosition, 1.0));
+    prevClip.xyz /= prevClip.w;
+
+    float2 prevUV = prevClip.xy * float2(0.5, -0.5) + 0.5;
+
+    // Check if reprojected position is valid (inside previous frustum)
+    float blendWeight = TemporalBlendWeight;
+    if (any(prevUV < 0.0) || any(prevUV > 1.0))
+    {
+      blendWeight = 1.0; // No history available, use current frame completely
+    }
+
+    // Sample history
+    float3 historyUVW = float3(prevUV, sliceNorm);
+    float4 history = HistoryFroxelGrid.SampleLevel(LinearClampSampler, historyUVW, 0);
+
+    // Blend: low weight for current frame means more temporal stability
+    float4 result = lerp(history, current, blendWeight);
+
+    FroxelGrid[froxelCoord] = result;
+  }
+}

@@ -1,0 +1,63 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[RENDERSTATE]
+DepthTest = false
+DepthWrite = false
+CullMode = CullMode_None
+
+[VERTEXSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleVertexShader.h>
+
+[PIXELSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleInterpolator.h>
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "VolumetricFogConstants.h"
+
+// The integrated froxel grid: RGB = accumulated inscatter, A = transmittance
+Texture3D<float4> VolumetricFogTexture;
+
+Texture2DArray SceneDepth;
+Texture2DArray SceneColor;
+
+float4 main(PS_IN Input) : SV_Target
+{
+  #if CAMERA_MODE == CAMERA_MODE_STEREO
+    s_ActiveCameraEyeIndex = Input.RenderTargetArrayIndex;
+  #endif
+
+  float2 uv = Input.TexCoord0.xy;
+
+  // Read the original scene color
+  float4 sceneColor = SceneColor.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0.0);
+
+  // Sample scene depth to determine the froxel W coordinate
+  float depthFromZBuffer = SceneDepth.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0.0).r;
+  float linearDepth = LinearizeZBufferDepth(depthFromZBuffer);
+
+  // Convert to froxel W
+  float w = saturate(log(linearDepth / FroxelNearPlane) / log(FroxelFarPlane / FroxelNearPlane));
+
+  float3 froxelUVW = float3(uv, w);
+
+  // Sample the integrated fog volume (RGB = inscatter, A = transmittance)
+  float4 fog = VolumetricFogTexture.SampleLevel(LinearClampSampler, froxelUVW, 0);
+
+  // If the volume is uninitialized (all zero), transmittance would be 0 causing a black screen.
+  // Valid data always has transmittance > 0 (even dense fog retains some transmittance in near slices).
+  // Treat zero transmittance with zero inscatter as uninitialized and pass through the scene color.
+  if (fog.a <= 0.0 && all(fog.rgb <= 0.0))
+  {
+    return sceneColor;
+  }
+
+  // Composite: sceneColor * transmittance + inscatter
+  float3 result = sceneColor.rgb * fog.a + fog.rgb;
+  return float4(result, sceneColor.a);
+}

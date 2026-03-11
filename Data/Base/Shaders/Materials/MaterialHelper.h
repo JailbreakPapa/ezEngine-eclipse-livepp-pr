@@ -238,6 +238,8 @@ ezMaterialData FillMaterialData()
   matData.subsurfaceShadowFalloff = 0.0;
 #endif
 
+  matData.subsurfaceProfileIndex = 0; // Default: skin profile
+
   return matData;
 }
 

@@ -7,6 +7,7 @@
 #include <RendererCore/Lights/Implementation/ClusteredDataUtils.h>
 #include <RendererCore/Lights/Implementation/ReflectionPool.h>
 #include <RendererCore/Lights/Implementation/ShadowPool.h>
+#include <RendererCore/Lights/Implementation/VirtualShadowPool.h>
 #include <RendererCore/Pipeline/ExtractedRenderData.h>
 #include <RendererCore/RenderContext/RenderContext.h>
 #include <RendererCore/Textures/TextureUtils.h>
@@ -113,6 +114,15 @@ void ezClusteredDataGPU::BindResources(ezRenderContext* pRenderContext)
   bindGroup.BindTexture("ShadowAtlasTexture", ezShadowPool::GetShadowAtlasTexture());
   bindGroup.BindSampler("ShadowSampler", m_hShadowSampler);
 
+  // VSM resources
+  if (ezVirtualShadowPool::IsEnabled())
+  {
+    bindGroup.BindTexture("VSMPageTable", ezVirtualShadowPool::GetPageTableTexture());
+    bindGroup.BindTexture("VSMPhysicalAtlas", ezVirtualShadowPool::GetPhysicalAtlasTexture());
+    bindGroup.BindBuffer("ezVSMConstants", ezVirtualShadowPool::GetConstantBuffer());
+    bindGroup.BindBuffer("AllocationResults", ezVirtualShadowPool::GetAllocationResultsBuffer());
+  }
+
   ezResourceLock<ezDecalAtlasResource> pDecalAtlas(m_hDecalAtlas, ezResourceAcquireMode::AllowLoadingFallback);
   bindGroup.BindTexture("DecalAtlasBaseColorTexture", pDecalAtlas->GetBaseColorTexture());
   bindGroup.BindTexture("DecalAtlasNormalTexture", pDecalAtlas->GetNormalTexture());
@@ -213,6 +223,9 @@ void* ezClusteredDataProvider::UpdateData(const ezRenderViewContext& renderViewC
     pConstants->FogColor = pData->m_FogColor;
     pConstants->FogInvSkyDistance = pData->m_fFogInvSkyDistance;
     pConstants->FogStartDistance = pData->m_fFogStartDistance;
+
+    pConstants->VolumetricFogEnabled = pData->m_bVolumetricFogEnabled ? 1u : 0u;
+    pConstants->VSMEnabled = pData->m_bVSMEnabled ? 1u : 0u;
   }
 
   return &m_Data;

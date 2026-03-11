@@ -48,6 +48,12 @@ PluginState
 }
 PluginState
 {
+	string %ID{"RenderDoc"}
+	bool %Selected{true}
+	bool %LoadCopy{false}
+}
+PluginState
+{
 	string %ID{"RmlUi"}
 	bool %Selected{true}
 	bool %LoadCopy{false}

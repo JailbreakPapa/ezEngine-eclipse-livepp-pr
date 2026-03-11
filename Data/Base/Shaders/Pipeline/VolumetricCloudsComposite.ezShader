@@ -1,0 +1,80 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[RENDERSTATE]
+DepthTest = false
+DepthWrite = false
+CullMode = CullMode_None
+
+[VERTEXSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleVertexShader.h>
+
+[PIXELSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleInterpolator.h>
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "VolumetricCloudsConstants.h"
+
+// Current frame cloud render (quarter resolution)
+Texture2D<float4> CurrentCloudTexture;
+
+// Previous frame's cloud-only result (full resolution, inscatter RGB + transmittance A)
+Texture2D<float4> HistoryCloudTexture;
+
+Texture2DArray SceneDepth;
+Texture2DArray SceneColor;
+
+struct PS_OUT
+{
+  float4 SceneComposite : SV_Target0; // Final composited scene color
+  float4 CloudHistory : SV_Target1;   // Cloud-only data for next frame's temporal reprojection
+};
+
+PS_OUT main(PS_IN Input)
+{
+  #if CAMERA_MODE == CAMERA_MODE_STEREO
+    s_ActiveCameraEyeIndex = Input.RenderTargetArrayIndex;
+  #endif
+
+  float2 uv = Input.TexCoord0.xy;
+
+  // Read the original scene color
+  float4 sceneColor = SceneColor.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0.0);
+
+  // Sample current frame at quarter res (bilinear upscale)
+  float4 currentCloud = CurrentCloudTexture.SampleLevel(LinearClampSampler, uv, 0);
+
+  // Reproject for temporal accumulation
+  float depthFromZBuffer = SceneDepth.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0.0).r;
+
+  float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depthFromZBuffer, 1.0));
+  float3 worldPos = worldPosH.xyz / worldPosH.w;
+
+  float4 prevClip = mul(PrevWorldToClipMatrix, float4(worldPos, 1.0));
+  float2 prevUV = (prevClip.xy / prevClip.w) * float2(0.5, -0.5) + 0.5;
+
+  float4 history = HistoryCloudTexture.SampleLevel(LinearClampSampler, prevUV, 0);
+
+  // Reject history if reprojected outside screen
+  float blend = TemporalBlendWeight;
+  if (any(prevUV < 0.0) || any(prevUV > 1.0))
+  {
+    blend = 1.0;
+  }
+
+  float4 cloud = lerp(history, currentCloud, blend);
+
+  // Composite: scene * transmittance + inscatter
+  float3 result = sceneColor.rgb * cloud.a + cloud.rgb;
+
+  PS_OUT output;
+  output.SceneComposite = float4(result, sceneColor.a);
+  output.CloudHistory = cloud;
+  return output;
+}

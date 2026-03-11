@@ -1,0 +1,71 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/VirtualShadowMapData.h>
+
+Texture2DArray SceneDepth;
+
+// Append buffer for page requests (atomic writes)
+RWStructuredBuffer<uint> PageRequestBuffer;
+
+[numthreads(VSM_PAGE_MARKING_THREAD_X, VSM_PAGE_MARKING_THREAD_Y, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint2 screenSize = uint2(ViewportSize.xy);
+  if (any(DTid.xy >= screenSize))
+    return;
+
+  // Read scene depth
+  float depthFromZBuffer = SceneDepth.Load(int4(DTid.xy, 0, 0)).r;
+
+  // Skip sky pixels
+  if (depthFromZBuffer >= 1.0)
+    return;
+
+  float linearDepth = LinearizeZBufferDepth(depthFromZBuffer);
+
+  // Reconstruct world position
+  float2 uv = (float2(DTid.xy) + 0.5) / float2(screenSize);
+  float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depthFromZBuffer, 1.0));
+  float3 worldPosition = worldPosH.xyz / worldPosH.w;
+
+  // For each clipmap level, determine which virtual page this pixel falls in
+  float3 posFromCenter = worldPosition - ClipmapCenter.xyz;
+
+  for (uint level = 0; level < NumClipmapLevels; ++level)
+  {
+    float halfSize = ClipmapLevelWorldSize[level].x * 0.5;
+
+    // Check if this position is within this clipmap level
+    if (abs(posFromCenter.x) < halfSize && abs(posFromCenter.y) < halfSize)
+    {
+      // Transform to clipmap UV [0, 1]
+      float4 clipmapUV4 = mul(ClipmapWorldToUV[level], float4(worldPosition, 1.0));
+      float2 virtualUV = clipmapUV4.xy;
+
+      if (all(virtualUV >= 0.0) && all(virtualUV <= 1.0))
+      {
+        // Compute page coordinate
+        uint2 pageCoord = uint2(virtualUV * float(VSM_PAGES_PER_LEVEL));
+        pageCoord = min(pageCoord, VSM_PAGES_PER_LEVEL - 1);
+
+        // Encode request: level in high bits, page coordinate packed
+        uint requestIndex = level * VSM_PAGES_PER_LEVEL * VSM_PAGES_PER_LEVEL + pageCoord.y * VSM_PAGES_PER_LEVEL + pageCoord.x;
+
+        // Atomically mark this page as requested
+        InterlockedOr(PageRequestBuffer[requestIndex], 1u);
+      }
+
+      // Only mark the finest level that contains this pixel
+      break;
+    }
+  }
+}

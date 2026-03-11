@@ -16,6 +16,8 @@
 Texture2D ShadowAtlasTexture;
 SamplerComparisonState ShadowSampler;
 
+#include <Shaders/Common/VirtualShadowMapSampling.h>
+
 Texture2D DecalAtlasBaseColorTexture;
 Texture2D DecalAtlasNormalTexture;
 Texture2D DecalAtlasORMTexture;
@@ -26,8 +28,12 @@ TextureCubeArray ReflectionSpecularTexture;
 Texture2D SkyIrradianceTexture;
 #define NUM_REFLECTION_MIPS 6
 
+// Volumetric fog (integrated froxel grid: RGB = inscatter, A = transmittance)
+Texture3D VolumetricFogTexture;
+
 // Pass data
 Texture2DArray SSAOTexture BIND_GROUP(BG_RENDER_PASS);
+Texture2DArray SSRTexture BIND_GROUP(BG_RENDER_PASS);
 Texture2DArray SceneDepth BIND_GROUP(BG_RENDER_PASS);
 Texture2DArray SceneColor BIND_GROUP(BG_RENDER_PASS);
 SamplerState SceneColorSampler BIND_GROUP(BG_RENDER_PASS);
@@ -184,6 +190,20 @@ float SampleShadow(float3 shadowPosition, float2x2 randomRotation, float penumbr
 float CalculateShadowTerm(float3 worldPosition, float3 vertexNormal, float3 lightVector, float distanceToLight, uint type,
   uint shadowDataOffsetAndFadeOut, float noise, float2x2 randomRotation, float extraPenumbraScale, inout float subsurfaceShadow, out float3 debugColor)
 {
+  // Virtual Shadow Map path for directional lights
+  if (VSMEnabled != 0 && type == LIGHT_TYPE_DIR)
+  {
+    float shadowTerm = SampleVirtualShadowMap(worldPosition, vertexNormal, lightVector, noise, randomRotation);
+    if (shadowTerm >= 0.0)
+    {
+      // Valid VSM result - page was allocated and sampled
+      debugColor = float3(0, 1, 0);
+      subsurfaceShadow = shadowTerm;
+      return shadowTerm;
+    }
+    // Page not allocated - fall through to CSM path below
+  }
+
   float3 debugColors[] = {
     float3(1, 0, 0),
     float3(1, 1, 0),
@@ -650,6 +670,17 @@ AccumulatedLight CalculateLighting(ezMaterialData matData, ezPerClusterData clus
   float3 reflection = ComputeReflection(matData, viewVector, clusterData);
   float NdotV = saturate(dot(matData.worldNormal, viewVector));
   float3 specularColor = EnvironmentBRDF(matData.specularColor, matData.roughness, NdotV);
+
+  // Blend screen-space reflections with probe reflections.
+  // SSRTexture.a is the confidence/hit mask; where SSR is valid it replaces probe data.
+  // When SSR is not bound, the fallback texture returns zero so probes are used exclusively.
+  {
+    float3 ssrUV = float3(screenPosition.xy * ViewportSize.zw, s_ActiveCameraEyeIndex);
+    float4 ssrData = SSRTexture.SampleLevel(PointClampSampler, ssrUV, 0);
+    float ssrConfidence = ssrData.a;
+    reflection = lerp(reflection, ssrData.rgb, ssrConfidence);
+  }
+
   totalLight.specularLight += specularColor * indirectLightModulation * reflection * occlusion;
 
   // enable once we have proper sky visibility
@@ -858,6 +889,13 @@ float3 ApplyFog(float3 color, float3 worldPosition, float fogAmount)
 
 float3 ApplyFog(float3 color, float3 worldPosition)
 {
+  // When volumetric fog is enabled, fog is applied as a post-process by VolumetricFogPass.
+  // Skip analytical fog here to avoid double-application.
+  if (VolumetricFogEnabled != 0)
+  {
+    return color;
+  }
+
   if (FogDensity > 0.0)
   {
     return ApplyFog(color, worldPosition, GetFogAmount(worldPosition));

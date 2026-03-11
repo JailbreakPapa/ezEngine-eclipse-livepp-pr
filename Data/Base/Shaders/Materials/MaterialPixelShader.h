@@ -50,7 +50,53 @@
 #  error "Unknown shading quality configuration."
 #endif
 
+#if defined(RENDER_PASS_GBUFFER) && RENDER_PASS == RENDER_PASS_GBUFFER
+#  include <Shaders/Common/GBufferEncoding.h>
+#endif
+
 #include <Shaders/Materials/MaterialHelper.h>
+
+#if defined(RENDER_PASS_GBUFFER) && RENDER_PASS == RENDER_PASS_GBUFFER
+
+// GBuffer output: 3 render targets for deferred rendering
+GBufferOutput main(PS_IN Input)
+{
+#if CAMERA_MODE == CAMERA_MODE_STEREO
+  s_ActiveCameraEyeIndex = Input.RenderTargetArrayIndex;
+#endif
+
+  G.Input = Input;
+#if defined(CUSTOM_GLOBALS)
+  FillCustomGlobals();
+#endif
+
+  ezMaterialData matData = FillMaterialData();
+
+  // Encode material data into GBuffer
+  GBufferData gbufferData;
+  gbufferData.albedo = matData.diffuseColor;
+  gbufferData.metallic = 0.0;
+
+  // If using simple material model, metallic is encoded in the specular/diffuse split
+  // Approximate metallic from specular color
+  float specLuminance = dot(matData.specularColor, float3(0.2126, 0.7152, 0.0722));
+  gbufferData.metallic = saturate(specLuminance > 0.1 ? specLuminance : 0.0);
+
+  gbufferData.normal = matData.worldNormal;
+  gbufferData.roughness = matData.perceptualRoughness;
+  gbufferData.emission = matData.emissiveColor;
+  gbufferData.occlusion = matData.occlusion;
+  gbufferData.materialFlags = GBUFFER_MATFLAG_DEFAULT;
+
+#if defined(USE_MATERIAL_SUBSURFACE_COLOR)
+  // Encode SSS flag with profile index: non-zero = SSS enabled, value = profileIndex + 1
+  gbufferData.materialFlags = min(matData.subsurfaceProfileIndex + 1, 3);
+#endif
+
+  return EncodeGBuffer(gbufferData);
+}
+
+#else // Not GBuffer render pass
 
 struct PS_OUT
 {
@@ -313,3 +359,5 @@ PS_OUT main(PS_IN Input)
 
   return Output;
 }
+
+#endif // RENDER_PASS != RENDER_PASS_GBUFFER

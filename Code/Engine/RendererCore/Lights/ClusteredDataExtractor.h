@@ -44,6 +44,9 @@ public:
   float m_fFogStartDistance = 0.0f;
   float m_fFogInvSkyDistance = 0.0f;
   ezColor m_FogColor = ezColor::Black;
+
+  bool m_bVolumetricFogEnabled = false;
+  bool m_bVSMEnabled = false;
 };
 
 /// Extracts lights, decals, and reflection probes into a clustered data structure.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Shaders/Materials/MaterialData.h>
+#include <Shaders/Common/PreIntegratedSkin.h>
 
 // TODO:
 // check roughness^2 vs. roughness^4
@@ -134,15 +135,21 @@ AccumulatedLight DefaultShading(ezMaterialData matData, float3 L, float3 V)
 AccumulatedLight SubsurfaceShading(ezMaterialData matData, float3 L, float3 V)
 {
   float3 N = matData.worldNormal;
-  float3 H = normalize(V + L);
+  float NdotL = dot(N, L);
 
+  // Pre-integrated skin BRDF: curvature-dependent diffuse wrap with per-channel color shift.
+  // At low curvature this converges to standard NdotL; at high curvature light wraps
+  // further into the shadow region with a red shift simulating blood absorption in skin.
+  float curvature = EstimateCurvature(N, matData.worldPosition);
+  float3 sssLight = PreIntegratedSkinBRDFRGB(NdotL, curvature);
+
+  // Forward scatter: view-dependent transmission through thin features
   float3 distortedLightDir = L + N * 0.1;
   float inScatter = pow(saturate(dot(V, -distortedLightDir)), matData.subsurfaceScatterPower);
 
-  float wrapFactor = 0.5;
-  float wrappedNdotH = saturate((dot(N, H) * wrapFactor + 1 - wrapFactor)) / (PI * 2);
+  float3 subsurface = matData.subsurfaceColor * lerp(sssLight, 1, inScatter);
 
-  return InitializeLight(matData.subsurfaceColor * lerp(wrappedNdotH, 1, inScatter), 0.0);
+  return InitializeLight(subsurface, 0.0);
 }
 
 float3 EnvironmentBRDF(float3 specularColor, float roughness, float NoV)

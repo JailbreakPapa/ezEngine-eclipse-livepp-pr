@@ -1,0 +1,60 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/VolumetricUtils.h>
+#include "VolumetricFogConstants.h"
+
+// Input: inscattered light (RGB) and density (A) per froxel after temporal blending
+Texture3D<float4> FroxelGridInput;
+
+// Output: accumulated inscatter (RGB) and transmittance (A)
+RWTexture3D<float4> IntegratedFroxelGrid;
+
+[numthreads(VOLUMETRIC_FOG_THREAD_GROUP_X, VOLUMETRIC_FOG_THREAD_GROUP_Y, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint3 gridSize = uint3(FroxelGridSizeX, FroxelGridSizeY, FroxelGridSizeZ);
+
+  if (any(DTid.xy >= gridSize.xy))
+    return;
+
+  // Front-to-back integration along the depth axis
+  float3 accumulatedInscatter = 0;
+  float accumulatedTransmittance = 1.0;
+
+  float prevDepth = FroxelNearPlane;
+
+  for (uint z = 0; z < gridSize.z; ++z)
+  {
+    uint3 froxelCoord = uint3(DTid.xy, z);
+
+    float4 froxelData = FroxelGridInput.Load(int4(froxelCoord, 0));
+    float3 inScatteredLight = froxelData.rgb;
+    float density = froxelData.a;
+
+    // Compute step size (distance between this slice and the next)
+    float sliceNorm = (float(z) + 0.5) / float(gridSize.z);
+    float linearDepth = FroxelNearPlane * exp(sliceNorm * log(FroxelFarPlane / FroxelNearPlane));
+    float stepSize = linearDepth - prevDepth;
+    prevDepth = linearDepth;
+
+    // Beer-Lambert extinction for this step
+    float transmittance = BeerLambert(density, stepSize);
+
+    // Integrate: add inscatter weighted by transmittance so far, then attenuate
+    // Using the analytical integration of constant density within a slab
+    float3 slabInscatter = inScatteredLight * (1.0 - transmittance) / max(density, 0.0001);
+    accumulatedInscatter += accumulatedTransmittance * slabInscatter;
+    accumulatedTransmittance *= transmittance;
+
+    // Store accumulated result for this slice
+    IntegratedFroxelGrid[froxelCoord] = float4(accumulatedInscatter, accumulatedTransmittance);
+  }
+}

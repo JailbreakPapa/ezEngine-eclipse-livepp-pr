@@ -9,6 +9,8 @@
 #include <RendererCore/Lights/AmbientLightComponent.h>
 #include <RendererCore/Lights/ClusteredDataExtractor.h>
 #include <RendererCore/Lights/Implementation/ClusteredDataUtils.h>
+#include <RendererCore/Lights/VolumetricFogComponent.h>
+#include <RendererCore/Lights/Implementation/VirtualShadowPool.h>
 #include <RendererCore/Pipeline/ExtractedRenderData.h>
 #include <RendererCore/Pipeline/View.h>
 
@@ -250,13 +252,14 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
     viewProjectionMatrixRight = projectionMatrixRight * viewMatrixRight;
   }
 
+  ezUInt32 uiBrightestDirectionalLightIndex = ezInvalidIndex;
+  float fBrightestDirectionalLightIntensity = 0.0f;
+  ezVec3 vBrightestDirectionalLightDirection = ezVec3(0, 0, -1);
+
   // Lights
   {
     EZ_PROFILE_SCOPE("Lights");
     m_TempLightData.Clear();
-
-    ezUInt32 uiBrightestDirectionalLightIndex = ezInvalidIndex;
-    float fBrightestDirectionalLightIntensity = 0.0f;
 
     auto batchList = ref_extractedRenderData.GetRenderDataBatchesWithCategory(ezDefaultRenderDataCategories::Light);
     const ezUInt32 uiBatchCount = batchList.GetBatchCount();
@@ -331,6 +334,7 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
           {
             fBrightestDirectionalLightIntensity = fIntensity;
             uiBrightestDirectionalLightIndex = uiLightIndex;
+            vBrightestDirectionalLightDirection = pDirLightRenderData->m_vDirection;
           }
         }
         else if (auto pFillLightRenderData = ezDynamicCast<const ezFillLightRenderData*>(it))
@@ -365,6 +369,10 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
           pData->m_fFogStartDistance = pFogRenderData->m_fFogStartDistance;
 
           pData->m_FogColor = pFogRenderData->m_Color;
+        }
+        else if (auto pVolFogRenderData = ezDynamicCast<const ezVolumetricFogRenderData*>(it))
+        {
+          pData->m_bVolumetricFogEnabled = true;
         }
         else
         {
@@ -512,6 +520,14 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
 
     pData->m_ReflectionProbeData = EZ_NEW_ARRAY(ezFrameAllocator::GetCurrentAllocator(), ezPerReflectionProbeData, m_TempReflectionProbeData.GetCount());
     pData->m_ReflectionProbeData.CopyFrom(m_TempReflectionProbeData);
+  }
+
+  pData->m_bVSMEnabled = ezVirtualShadowPool::IsEnabled();
+
+  if (pData->m_bVSMEnabled && uiBrightestDirectionalLightIndex != ezInvalidIndex)
+  {
+    static ezUInt32 s_uiVSMFrameCounter = 0;
+    ezVirtualShadowPool::Update(pCamera->GetPosition(), vBrightestDirectionalLightDirection, s_uiVSMFrameCounter++, view.GetWorld());
   }
 
   FillItemListAndClusterData(pData);

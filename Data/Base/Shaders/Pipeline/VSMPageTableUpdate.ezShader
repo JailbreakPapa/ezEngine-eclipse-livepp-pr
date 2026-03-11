@@ -1,0 +1,42 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/VirtualShadowMapData.h>
+
+// Input: allocation decisions from CPU (per-page: physical page index or 0xFFFF if not allocated)
+StructuredBuffer<uint> AllocationResults;
+
+// Output: page table texture
+RWTexture2DArray<uint> PageTableOutput;
+
+[numthreads(8, 8, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  // DTid.xy = page coordinate within a level, DTid.z = clipmap level
+  if (DTid.x >= VSM_PAGES_PER_LEVEL || DTid.y >= VSM_PAGES_PER_LEVEL || DTid.z >= VSM_MAX_CLIPMAP_LEVELS)
+    return;
+
+  uint requestIndex = DTid.z * VSM_PAGES_PER_LEVEL * VSM_PAGES_PER_LEVEL + DTid.y * VSM_PAGES_PER_LEVEL + DTid.x;
+
+  uint allocation = AllocationResults[requestIndex];
+
+  if (allocation != 0xFFFF)
+  {
+    // Page is allocated - write valid entry with physical page index
+    PageTableOutput[int3(DTid.xy, DTid.z)] = VSM_PAGE_VALID_BIT | (allocation & VSM_PAGE_INDEX_MASK);
+  }
+  else
+  {
+    // Keep existing entry or mark as invalid
+    uint existing = PageTableOutput[int3(DTid.xy, DTid.z)];
+    if ((existing & VSM_PAGE_VALID_BIT) == 0)
+    {
+      PageTableOutput[int3(DTid.xy, DTid.z)] = VSM_PAGE_INVALID;
+    }
+  }
+}

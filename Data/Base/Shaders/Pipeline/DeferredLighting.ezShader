@@ -1,0 +1,101 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+SHADING_QUALITY = SHADING_QUALITY_NORMAL
+
+[RENDERSTATE]
+DepthTest = false
+DepthWrite = false
+CullMode = CullMode_None
+
+[VERTEXSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleVertexShader.h>
+
+[PIXELSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleInterpolator.h>
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/Lighting.h>
+#include <Shaders/Common/GBufferEncoding.h>
+#include "DeferredLightingConstants.h"
+
+// GBuffer inputs
+Texture2DArray GBuffer0Texture BIND_GROUP(BG_RENDER_PASS); // Albedo + Metallic
+Texture2DArray GBuffer1Texture BIND_GROUP(BG_RENDER_PASS); // Normal + Roughness + Flags
+Texture2DArray GBuffer2Texture BIND_GROUP(BG_RENDER_PASS); // Emission + AO
+
+float3 ReconstructWorldPosition(float2 uv, float depthFromZBuffer)
+{
+  float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depthFromZBuffer, 1.0));
+  return worldPosH.xyz / worldPosH.w;
+}
+
+float4 main(PS_IN Input) : SV_Target
+{
+#if CAMERA_MODE == CAMERA_MODE_STEREO
+  s_ActiveCameraEyeIndex = Input.RenderTargetArrayIndex;
+#endif
+
+  float2 uv = Input.TexCoord0.xy;
+  float3 uvSlice = float3(uv, s_ActiveCameraEyeIndex);
+
+  // Sample GBuffer
+  float4 gb0 = GBuffer0Texture.SampleLevel(PointClampSampler, uvSlice, 0);
+  float4 gb1 = GBuffer1Texture.SampleLevel(PointClampSampler, uvSlice, 0);
+  float4 gb2 = GBuffer2Texture.SampleLevel(PointClampSampler, uvSlice, 0);
+
+  // Sample depth
+  float depthFromZBuffer = SceneDepth.SampleLevel(PointClampSampler, uvSlice, 0).r;
+  float linearDepth = LinearizeZBufferDepth(depthFromZBuffer);
+
+  // Decode GBuffer
+  GBufferData gbData = DecodeGBuffer(gb0, gb1, gb2);
+
+  // Skip sky pixels (depth = max)
+  if (depthFromZBuffer >= 1.0)
+  {
+    return float4(gbData.emission, 1.0);
+  }
+
+  // Reconstruct world position
+  float3 worldPosition = ReconstructWorldPosition(uv, depthFromZBuffer);
+
+  // Reconstruct material data for the lighting pipeline
+  ezMaterialData matData;
+  matData.worldPosition = worldPosition;
+  matData.worldNormal = gbData.normal;
+  matData.vertexNormal = gbData.normal; // No per-vertex normal in GBuffer, use pixel normal
+  matData.diffuseColor = gbData.albedo * (1.0 - gbData.metallic);
+  matData.specularColor = lerp(0.04, gbData.albedo, gbData.metallic);
+  matData.emissiveColor = gbData.emission;
+  matData.refractionColor = float4(0, 0, 0, 0);
+  matData.roughness = gbData.roughness * gbData.roughness; // perceptual → linear
+  matData.perceptualRoughness = gbData.roughness;
+  matData.occlusion = gbData.occlusion;
+  matData.opacity = 1.0;
+  matData.subsurfaceColor = float3(0, 0, 0);
+  matData.subsurfaceScatterPower = 0;
+  matData.subsurfaceShadowFalloff = 0;
+
+  // Screen position for cluster lookup: xy = pixel coords, z = linear depth
+  float3 screenPosition = float3(Input.Position.xy, linearDepth);
+
+  // Get cluster data for this pixel
+  ezPerClusterData clusterData = GetClusterData(screenPosition);
+
+  // Calculate lighting using the same pipeline as forward rendering
+  AccumulatedLight light = CalculateLighting(matData, clusterData, screenPosition, true);
+
+  // Final compositing
+  float3 litColor = light.diffuseLight + light.specularLight;
+  litColor += matData.emissiveColor;
+
+  // Apply fog
+  litColor = ApplyFog(litColor, worldPosition);
+
+  return float4(litColor, 1.0);
+}
