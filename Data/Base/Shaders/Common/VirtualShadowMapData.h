@@ -38,7 +38,7 @@ CONSTANT_BUFFER(ezVSMConstants, 5)
 
   FLOAT1(VSMDepthBias);
   FLOAT1(VSMNormalBias);
-  UINT1(VSMPadding0);
+  FLOAT1(VSMLightSize);
   UINT1(VSMPadding1);
 };
 

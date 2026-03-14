@@ -38,7 +38,7 @@ public:
   static bool IsEnabled();
 
   /// Called each frame during extraction to update clipmap transforms and process page requests.
-  static void Update(const ezVec3& vCameraPosition, const ezVec3& vLightDirection, ezUInt32 uiFrameCounter, const ezWorld* pWorld);
+  static void Update(const ezVec3& vCameraPosition, const ezVec3& vLightDirection, ezUInt32 uiFrameCounter, const ezWorld* pWorld, float fLightPenumbraSize = 0.05f);
 
   static ezGALTextureHandle GetPageTableTexture();
   static ezGALTextureHandle GetPhysicalAtlasTexture();
@@ -83,7 +83,7 @@ private:
   static ezVec3 s_vLightUp;
   static ezMat4 s_ClipmapWorldToUV[8];
   static float s_fClipmapLevelSizes[8];
-  static ezVec3 s_vSnappedClipmapCenter[8];
+  static float s_fLightPenumbraSize;
 
   // Shadow view pool
   static ezDeque<ShadowView> s_ShadowViews;

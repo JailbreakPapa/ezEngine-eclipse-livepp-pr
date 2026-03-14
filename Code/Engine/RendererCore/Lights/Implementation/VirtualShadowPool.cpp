@@ -3,6 +3,7 @@
 #include <Foundation/Configuration/CVar.h>
 #include <Foundation/Configuration/Startup.h>
 #include <Foundation/Profiling/Profiling.h>
+#include <Foundation/Utilities/GraphicsUtils.h>
 #include <RendererCore/Lights/Implementation/VirtualShadowPool.h>
 #include <RendererCore/Pipeline/View.h>
 #include <RendererCore/RenderContext/RenderContext.h>
@@ -34,11 +35,15 @@ EZ_END_SUBSYSTEM_DECLARATION;
 // clang-format on
 
 ezCVarBool cvar_UseVirtualShadowMaps("Rendering.Shadows.UseVirtualShadowMaps", false, ezCVarFlags::Default, "Enable virtual shadow maps for directional lights");
+ezCVarFloat cvar_RenderingVSMDepthBias("Rendering.Shadows.VSMDepthBias", 0.0003f, ezCVarFlags::Default, "VSM constant depth bias");
+ezCVarFloat cvar_RenderingVSMNormalBias("Rendering.Shadows.VSMNormalBias", 0.05f, ezCVarFlags::Default, "VSM normal offset bias");
 
 // Shadow camera parameters: must be consistent between rendering (CreateShadowViewsForDirtyPages)
 // and sampling (ClipmapWorldToUV z-component in UpdateClipmaps).
+// The depth range should cover geometry at reasonable distances along the light direction.
+// Keep it as tight as possible to preserve D16 precision (total range / 65535 = meters per step).
 static constexpr float VSM_CAMERA_NEAR_OFFSET = 500.0f;
-static constexpr float VSM_SHADOW_FAR_PLANE = VSM_CAMERA_NEAR_OFFSET + 1000.0f;
+static constexpr float VSM_SHADOW_FAR_PLANE = VSM_CAMERA_NEAR_OFFSET + 500.0f;
 
 bool ezVirtualShadowPool::s_bInitialized = false;
 ezVirtualShadowPageTable ezVirtualShadowPool::s_PageTable;
@@ -55,7 +60,7 @@ ezVec3 ezVirtualShadowPool::s_vLightRight = ezVec3(1, 0, 0);
 ezVec3 ezVirtualShadowPool::s_vLightUp = ezVec3(0, 1, 0);
 ezMat4 ezVirtualShadowPool::s_ClipmapWorldToUV[8] = {};
 float ezVirtualShadowPool::s_fClipmapLevelSizes[8] = {};
-ezVec3 ezVirtualShadowPool::s_vSnappedClipmapCenter[8] = {};
+float ezVirtualShadowPool::s_fLightPenumbraSize = 0.05f;
 ezDeque<ezVirtualShadowPool::ShadowView> ezVirtualShadowPool::s_ShadowViews;
 ezUInt32 ezVirtualShadowPool::s_uiUsedShadowViews = 0;
 ezDynamicArray<ezUInt32> ezVirtualShadowPool::s_AllocationResultsCPU;
@@ -170,6 +175,7 @@ void ezVirtualShadowPool::DeInitialize()
 
   s_PageTable.Reset();
   s_AllocationResultsCPU.Clear();
+  s_pWorld = nullptr;
   s_bInitialized = false;
 }
 
@@ -178,22 +184,37 @@ bool ezVirtualShadowPool::IsEnabled()
   return cvar_UseVirtualShadowMaps && s_bInitialized;
 }
 
-void ezVirtualShadowPool::Update(const ezVec3& vCameraPosition, const ezVec3& vLightDirection, ezUInt32 uiFrameCounter, const ezWorld* pWorld)
+void ezVirtualShadowPool::Update(const ezVec3& vCameraPosition, const ezVec3& vLightDirection, ezUInt32 uiFrameCounter, const ezWorld* pWorld, float fLightPenumbraSize)
 {
   if (!s_bInitialized)
     return;
 
   s_uiFrameCounter = uiFrameCounter;
-  s_vLightDirection = vLightDirection;
+  s_fLightPenumbraSize = fLightPenumbraSize;
+
+  // Detect scene change: when the world pointer changes, all cached shadow data is invalid.
+  if (pWorld != s_pWorld)
+  {
+    s_PageTable.Reset();
+    s_bAtlasNeedsFullClear = true;
+  }
+
   s_pWorld = pWorld;
 
-  UpdateClipmaps(vCameraPosition, vLightDirection);
+  // vLightDirection is m_vDirection (rotation * -X), the direction light rays travel (toward scene).
+  // The shadow camera convention (matching CSM) uses the opposite: the direction the light "faces"
+  // (rotation * +X = GetGlobalDirForwards), where the camera is placed behind the light looking forward.
+  // Negate here so all internal code uses the CSM-compatible "light forward" convention.
+  const ezVec3 vLightForward = -vLightDirection;
+  s_vLightDirection = vLightForward;
+
+  UpdateClipmaps(vCameraPosition, vLightForward);
   ProcessPageRequests(uiFrameCounter);
 
   // Create shadow views for dirty pages during extraction (matching ShadowPool's pattern).
   // This ensures views are added before EndExtraction, avoiding "extracted multiple times" issues.
   s_uiUsedShadowViews = 0;
-  CreateShadowViewsForDirtyPages(vLightDirection);
+  CreateShadowViewsForDirtyPages(vLightForward);
 
   s_bUpdateCalled = true;
 }
@@ -205,60 +226,94 @@ void ezVirtualShadowPool::UpdateClipmaps(const ezVec3& vCameraPosition, const ez
   if (right.GetLengthSquared() < 0.001f)
     right = lightDir.CrossRH(ezVec3(0, 1, 0));
   right.Normalize();
-  ezVec3 up = right.CrossRH(lightDir);
+  // Compute up so that LookAt's left-handed basis has xaxis=right, yaxis=up, zaxis=lightDir.
+  // LookAt computes xaxis = up.CrossRH(lightDir), so we need up such that up.CrossRH(lightDir) = right.
+  // Setting up = lightDir.CrossRH(right) satisfies this: (lightDir x right) x lightDir = right.
+  ezVec3 up = lightDir.CrossRH(right);
   up.Normalize();
 
   // Store light-space basis for use by CreateShadowViewsForDirtyPages
   s_vLightRight = right;
   s_vLightUp = up;
 
+  // SVSM reference: origin-centered sample matrix.
+  //
+  // The sample matrix (ClipmapWorldToUV) uses NO camera-dependent translation in XY.
+  // This makes virtual UVs completely stable across camera movement — only the light
+  // direction affects them. The shader uses frac() for toroidal wrapping since UVs
+  // can exceed [0,1].
+  //
+  // The view matrix is positioned at -lightDir * NEAR_OFFSET (along the light axis only,
+  // zero XY offset) so the Z depth matches the per-page render cameras.
+  //
+  // When the camera moves, render cameras wrap toroidally: each page is rendered at the
+  // world region closest to the camera that maps to that virtual page via frac().
+  // Only pages whose wrapped world region changed (wrap offset differs) need re-rendering.
+
+  ezVec3 sampleOrigin = -lightDir * VSM_CAMERA_NEAR_OFFSET;
+  ezMat4 viewMatrixSample = ezGraphicsUtils::CreateLookAtViewMatrix(
+    sampleOrigin, sampleOrigin + lightDir, up, ezHandedness::LeftHanded);
+
   for (ezUInt32 level = 0; level < VSM_MAX_CLIPMAP_LEVELS; ++level)
   {
-    float halfSize = s_fClipmapLevelSizes[level] * 0.5f;
+    float levelSize = s_fClipmapLevelSizes[level];
 
-    // Snap the center in light-space (right/up axes) to page-sized increments to reduce temporal jitter.
-    // Project camera position onto the right/up plane, snap, then reconstruct world-space center.
-    float pageWorldSize = s_fClipmapLevelSizes[level] / float(VSM_PAGES_PER_LEVEL);
+    ezMat4 projMatrix = ezGraphicsUtils::CreateOrthographicProjectionMatrix(
+      levelSize, levelSize, 0.0f, VSM_SHADOW_FAR_PLANE,
+      ezClipSpaceDepthRange::ZeroToOne, ezClipSpaceYMode::Regular, ezHandedness::LeftHanded);
+
+    ezMat4 viewProjSample = projMatrix * viewMatrixSample;
+
+    // Remap XY from clip-space [-1,1] to virtual UV [0,1].
+    // Y is FLIPPED (DX11 convention, matching CSM's atlasScaleOffset.y = -0.5).
+    // Z passes through unchanged (already [0,1] from the ZeroToOne projection).
+    ezMat4 clipToUV = ezMat4::MakeIdentity();
+    clipToUV.Element(0, 0) = 0.5f;
+    clipToUV.Element(1, 1) = -0.5f;
+    clipToUV.Element(3, 0) = 0.5f;
+    clipToUV.Element(3, 1) = 0.5f;
+
+    s_ClipmapWorldToUV[level] = clipToUV * viewProjSample;
+
+    // Toroidal dirty tracking: compute each page's current wrap offset.
+    // The origin-centered sample matrix maps page (px, py) to a fixed region in light-space.
+    // The render camera wraps that region to be near the camera. The wrap offset is:
+    //   wrapX = round((camera_right - page_origin_right) / levelSize)
+    //   wrapY = round((camera_up - page_origin_up) / levelSize)
+    // When this changes, the page covers a different world region and must be re-rendered.
+    float pageWorldSize = levelSize / float(VSM_PAGES_PER_LEVEL);
+    float halfSize = levelSize * 0.5f;
     float projRight = right.Dot(vCameraPosition);
     float projUp = up.Dot(vCameraPosition);
-    float projLight = lightDir.Dot(vCameraPosition);
 
-    float snappedRight = ezMath::Round(projRight / pageWorldSize) * pageWorldSize;
-    float snappedUp = ezMath::Round(projUp / pageWorldSize) * pageWorldSize;
+    for (ezUInt32 py = 0; py < VSM_PAGES_PER_LEVEL; ++py)
+    {
+      for (ezUInt32 px = 0; px < VSM_PAGES_PER_LEVEL; ++px)
+      {
+        // Page-to-world mapping derived from the sample matrix UV formulas:
+        //   uv_x = right.dot(P)/levelSize + 0.5   (xaxis = right in LH view matrix)
+        //   uv_y = -up.dot(P)/levelSize + 0.5      (yaxis = up, but Y-flip in clipToUV)
+        //
+        // For page (px, py), the UV center is ((px+0.5)/16, (py+0.5)/16), so:
+        //   right.dot(pageCenter) = -halfSize + (px+0.5)*pageWorldSize
+        //   up.dot(pageCenter)    = halfSize - (py+0.5)*pageWorldSize
+        float originRight = -halfSize + (px + 0.5f) * pageWorldSize;
+        float originUp = halfSize - (py + 0.5f) * pageWorldSize;
 
-    ezVec3 snappedCenter = right * snappedRight + up * snappedUp + lightDir * projLight;
+        ezInt32 wrapX = (ezInt32)ezMath::Round((projRight - originRight) / levelSize);
+        ezInt32 wrapY = (ezInt32)ezMath::Round((projUp - originUp) / levelSize);
 
-    // Store per-level snapped center for consistent use in page rendering
-    s_vSnappedClipmapCenter[level] = snappedCenter;
-
-    // View matrix: transforms world-space to light-space (right, up, -lightDir)
-    ezMat4 view = ezMat4::MakeIdentity();
-    view.SetRow(0, ezVec4(right.x, right.y, right.z, -right.Dot(snappedCenter)));
-    view.SetRow(1, ezVec4(up.x, up.y, up.z, -up.Dot(snappedCenter)));
-    view.SetRow(2, ezVec4(-lightDir.x, -lightDir.y, -lightDir.z, lightDir.Dot(snappedCenter)));
-
-    // Projection: XY from [-halfSize, halfSize] to [0, 1], Z matches the shadow rendering camera's depth.
-    // Shadow cameras use near=0, far=VSM_SHADOW_FAR_PLANE with camera offset VSM_CAMERA_NEAR_OFFSET behind.
-    // In light-space z, view row 2 gives: z_view = -dot(lightDir, P - snappedCenter)
-    // Shadow camera depth = (dot(lightDir, P - cameraPos)) / farPlane
-    //   where cameraPos = pageCenter - lightDir * cameraNearOffset
-    // Since pageCenter offsets are in the right/up plane (perpendicular to lightDir):
-    //   depth = (dot(lightDir, P - snappedCenter) + cameraNearOffset) / farPlane
-    //         = (-z_view + cameraNearOffset) / farPlane
-    // So: z_proj = z_view * (-1/farPlane) + cameraNearOffset/farPlane
-    ezMat4 proj = ezMat4::MakeIdentity();
-    proj.Element(0, 0) = 0.5f / halfSize;
-    proj.Element(1, 1) = 0.5f / halfSize;
-    proj.Element(2, 2) = -1.0f / VSM_SHADOW_FAR_PLANE;
-    proj.Element(3, 0) = 0.5f;
-    proj.Element(3, 1) = 0.5f;
-    proj.Element(3, 2) = VSM_CAMERA_NEAR_OFFSET / VSM_SHADOW_FAR_PLANE;
-
-    s_ClipmapWorldToUV[level] = proj * view;
+        const auto& pageInfo = s_PageTable.GetPageInfo(level, px, py);
+        if (pageInfo.m_iWrapOffsetX != wrapX || pageInfo.m_iWrapOffsetY != wrapY)
+        {
+          s_PageTable.MarkPageDirty(level, px, py);
+        }
+      }
+    }
   }
 
-  // Use first level's snapped center as the overall clipmap center for constant buffer upload
-  s_vClipmapCenter = s_vSnappedClipmapCenter[0];
+  // Store the camera position in light-space for render camera positioning
+  s_vClipmapCenter = vCameraPosition;
 }
 
 void ezVirtualShadowPool::ProcessPageRequests(ezUInt32 uiFrameCounter)
@@ -346,9 +401,9 @@ void ezVirtualShadowPool::UploadConstants(ezGALCommandEncoder* pCommandEncoder)
     cb->ClipmapWorldToUV[i] = s_ClipmapWorldToUV[i];
   }
 
-  cb->VSMDepthBias = 0.002f;
-  cb->VSMNormalBias = 0.5f;
-  cb->VSMPadding0 = 0;
+  cb->VSMDepthBias = cvar_RenderingVSMDepthBias;
+  cb->VSMNormalBias = cvar_RenderingVSMNormalBias;
+  cb->VSMLightSize = s_fLightPenumbraSize;
   cb->VSMPadding1 = 0;
 }
 
@@ -392,11 +447,15 @@ void ezVirtualShadowPool::CreateShadowViewsForDirtyPages(const ezVec3& vLightDir
   const ezVec3& right = s_vLightRight;
   const ezVec3& up = s_vLightUp;
 
-  // Limit pages re-rendered per frame to avoid CPU/GPU spikes
-  const ezUInt32 maxPagesPerFrame = 64;
-  ezUInt32 pagesRendered = 0;
+  // s_vClipmapCenter stores the current camera position (set in UpdateClipmaps)
+  const ezVec3& vCameraPosition = s_vClipmapCenter;
+  float projRight = right.Dot(vCameraPosition);
+  float projUp = up.Dot(vCameraPosition);
 
-  for (ezUInt32 dirtyIdx = 0; dirtyIdx < s_DirtyPages.GetCount() && pagesRendered < maxPagesPerFrame; ++dirtyIdx)
+  // Render all dirty pages this frame. With the origin-centered sample matrix and toroidal
+  // scrolling, only pages at the scroll boundary are dirty (typically 1 row + 1 column per level
+  // per frame of camera movement = ~31 pages), so no budget limit is needed.
+  for (ezUInt32 dirtyIdx = 0; dirtyIdx < s_DirtyPages.GetCount(); ++dirtyIdx)
   {
     const ezUInt32 flatPageIdx = s_DirtyPages[dirtyIdx];
 
@@ -413,17 +472,27 @@ void ezVirtualShadowPool::CreateShadowViewsForDirtyPages(const ezVec3& vLightDir
     if (pageInfo.m_uiPhysicalPageIndex == 0xFFFF)
       continue;
 
-    // Compute page center in light-space (right/up) axes, relative to the snapped clipmap center.
-    // Pages are indexed [0, VSM_PAGES_PER_LEVEL) covering [-halfSize, halfSize] in each axis.
-    float halfSize = s_fClipmapLevelSizes[level] * 0.5f;
-    float pageWorldSize = s_fClipmapLevelSizes[level] / float(VSM_PAGES_PER_LEVEL);
+    float levelSize = s_fClipmapLevelSizes[level];
+    float halfSize = levelSize * 0.5f;
+    float pageWorldSize = levelSize / float(VSM_PAGES_PER_LEVEL);
 
-    float pageOffsetRight = -halfSize + (px + 0.5f) * pageWorldSize;
-    float pageOffsetUp = -halfSize + (py + 0.5f) * pageWorldSize;
+    // Page-to-world mapping derived from the sample matrix UV formulas:
+    //   uv_x = right.dot(P)/levelSize + 0.5   (xaxis = right in LH view matrix)
+    //   uv_y = -up.dot(P)/levelSize + 0.5      (yaxis = up, but Y-flip in clipToUV)
+    // So: right.dot(pageCenter) = -halfSize + (px+0.5)*pageWorldSize
+    //     up.dot(pageCenter)    = halfSize - (py+0.5)*pageWorldSize
+    float originRight = -halfSize + (px + 0.5f) * pageWorldSize;
+    float originUp = halfSize - (py + 0.5f) * pageWorldSize;
 
-    const ezVec3& snappedCenter = s_vSnappedClipmapCenter[level];
-    ezVec3 pageCenter = snappedCenter + right * pageOffsetRight + up * pageOffsetUp;
+    // Toroidal wrap: offset by integer multiples of levelSize to get the world region
+    // closest to the camera that maps to this virtual page via frac()
+    ezInt32 wrapX = (ezInt32)ezMath::Round((projRight - originRight) / levelSize);
+    ezInt32 wrapY = (ezInt32)ezMath::Round((projUp - originUp) / levelSize);
 
+    float renderRight = originRight + wrapX * levelSize;
+    float renderUp = originUp + wrapY * levelSize;
+
+    ezVec3 pageCenter = right * renderRight + up * renderUp;
     ezVec3 shadowCameraPos = pageCenter - lightDir * VSM_CAMERA_NEAR_OFFSET;
 
     ShadowView& sv = GetOrCreateShadowView();
@@ -431,6 +500,7 @@ void ezVirtualShadowPool::CreateShadowViewsForDirtyPages(const ezVec3& vLightDir
     sv.m_Camera.LookAt(shadowCameraPos, pageCenter, up);
     sv.m_Camera.SetCameraMode(ezCameraMode::OrthoFixedWidth, pageWorldSize, 0.0f, VSM_SHADOW_FAR_PLANE);
 
+    // Extend culling camera behind the shadow camera to capture geometry at any distance along light direction
     sv.m_CullingCamera = sv.m_Camera;
     sv.m_CullingCamera.SetCameraMode(ezCameraMode::OrthoFixedWidth, pageWorldSize, -VSM_CAMERA_NEAR_OFFSET, VSM_SHADOW_FAR_PLANE);
 
@@ -452,10 +522,10 @@ void ezVirtualShadowPool::CreateShadowViewsForDirtyPages(const ezVec3& vLightDir
       ezRenderWorld::AddViewToRender(sv.m_hView);
     }
 
-    // Clear the dirty flag now that we've queued this page for rendering
+    // Store the wrap offset so we know what world region this page was rendered for.
+    // Clear the dirty flag now that we've queued this page for rendering.
+    s_PageTable.SetWrapOffset(level, px, py, wrapX, wrapY);
     s_PageTable.ClearDirtyFlag(level, px, py);
-
-    pagesRendered++;
   }
 }
 

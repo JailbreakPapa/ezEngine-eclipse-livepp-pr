@@ -6,6 +6,7 @@
 struct ezPerLightData;
 struct ezPerDecalData;
 struct ezPerReflectionProbeData;
+struct ezPerFogVolumeData;
 struct ezPerClusterData;
 
 /// CPU-side data for clustered rendering containing lights, decals, and reflection probes.
@@ -47,6 +48,19 @@ public:
 
   bool m_bVolumetricFogEnabled = false;
   bool m_bVSMEnabled = false;
+
+  ezArrayPtr<ezPerFogVolumeData> m_FogVolumeData;
+
+  /// Per-volume fog parameters not stored in the GPU struct (used by the fog pass).
+  struct FogVolumeParams
+  {
+    float m_fNearPlane = 0.5f;
+    float m_fFarPlane = 500.0f;
+    float m_fTemporalBlendWeight = 0.05f;
+    float m_fStartDistance = 0.0f;
+  };
+
+  ezArrayPtr<FogVolumeParams> m_FogVolumeParams;
 };
 
 /// Extracts lights, decals, and reflection probes into a clustered data structure.
@@ -82,6 +96,8 @@ private:
   ezDynamicArray<ezPerLightData, ezAlignedAllocatorWrapper> m_TempLightData;
   ezDynamicArray<ezPerDecalData, ezAlignedAllocatorWrapper> m_TempDecalData;
   ezDynamicArray<ezPerReflectionProbeData, ezAlignedAllocatorWrapper> m_TempReflectionProbeData;
+  ezDynamicArray<ezPerFogVolumeData, ezAlignedAllocatorWrapper> m_TempFogVolumeData;
+  ezDynamicArray<ezClusteredDataCPU::FogVolumeParams> m_TempFogVolumeParams;
   ezDynamicArray<TempCluster<ezClusteredDataCPU::MAX_NUM_LIGHTS>> m_TempLightsClusters;
   ezDynamicArray<TempCluster<ezClusteredDataCPU::MAX_NUM_DECALS>> m_TempDecalsClusters;
   ezDynamicArray<TempCluster<ezClusteredDataCPU::MAX_NUM_REFLECTION_PROBES>> m_TempReflectionProbeClusters;

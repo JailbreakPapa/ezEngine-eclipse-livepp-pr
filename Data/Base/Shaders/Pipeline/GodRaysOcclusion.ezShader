@@ -1,0 +1,35 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+SHADING_QUALITY = SHADING_QUALITY_NORMAL
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/LightData.h>
+#include "GodRaysConstants.h"
+
+RWTexture2D<float> OcclusionOutput;
+
+Texture2DArray SceneDepth;
+
+[numthreads(GODRAYS_THREAD_GROUP_X, GODRAYS_THREAD_GROUP_Y, 1)]
+void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+  if (dispatchThreadId.x >= GodRaysResolutionX || dispatchThreadId.y >= GodRaysResolutionY)
+    return;
+
+  // Map half-res pixel to full-res UV
+  float2 uv = (float2(dispatchThreadId.xy) + 0.5) / float2(GodRaysResolutionX, GodRaysResolutionY);
+
+  // Sample scene depth
+  float depthFromZBuffer = SceneDepth.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0).r;
+
+  // Sky pixels (at max depth) are unoccluded, everything else is an occluder
+  float occlusion = depthFromZBuffer >= GodRaysDepthThreshold ? 1.0 : 0.0;
+
+  OcclusionOutput[dispatchThreadId.xy] = occlusion;
+}

@@ -38,7 +38,7 @@ void ezAnimationGraphAssetManager::OnDocumentManagerEvent(const ezDocumentManage
     {
       if (e.m_pDocument->GetDynamicRTTI() == ezGetStaticRTTI<ezAnimationGraphAssetDocument>())
       {
-        new ezQtAnimationGraphAssetDocumentWindow(e.m_pDocument); // NOLINT: not a memory leak
+        new ezQtAnimationGraphAssetDocumentWindow(static_cast<ezAssetDocument*>(e.m_pDocument)); // NOLINT: not a memory leak
       }
     }
     break;

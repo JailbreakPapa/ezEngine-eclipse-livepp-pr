@@ -37,35 +37,35 @@ void main(uint3 DTid : SV_DispatchThreadID)
   float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depthFromZBuffer, 1.0));
   float3 worldPosition = worldPosH.xyz / worldPosH.w;
 
-  // For each clipmap level, determine which virtual page this pixel falls in
-  float3 posFromCenter = worldPosition - ClipmapCenter.xyz;
+  // Project into the finest clipmap level (level 0) to determine which level to use.
+  // ClipmapWorldToUV maps world position to UV space. The sample matrix is origin-centered,
+  // so UVs are stable across frames.
+  float4 uv0 = mul(ClipmapWorldToUV[0], float4(worldPosition, 1.0));
 
-  for (uint level = 0; level < NumClipmapLevels; ++level)
-  {
-    float halfSize = ClipmapLevelWorldSize[level].x * 0.5;
+  // Select clipmap level using NDC magnitude (before the 0.5+0.5 remap in ClipmapWorldToUV).
+  // ClipmapWorldToUV already includes the *0.5+0.5 remap, so recover NDC: ndc = (uv - 0.5) / 0.5
+  // For X: ndc_x = (uv.x - 0.5) / 0.5.  For Y (flipped): ndc_y = (uv.y - 0.5) / (-0.5).
+  // We only need abs(ndc), so: abs(ndc) = abs(uv - 0.5) / 0.5 = abs(uv - 0.5) * 2.
+  float2 ndcAbs = abs(uv0.xy - 0.5) * 2.0;
+  float maxNDC = max(ndcAbs.x, ndcAbs.y);
 
-    // Check if this position is within this clipmap level
-    if (abs(posFromCenter.x) < halfSize && abs(posFromCenter.y) < halfSize)
-    {
-      // Transform to clipmap UV [0, 1]
-      float4 clipmapUV4 = mul(ClipmapWorldToUV[level], float4(worldPosition, 1.0));
-      float2 virtualUV = clipmapUV4.xy;
+  // Each subsequent clipmap level covers 2x the area, so NDC values are halved per level.
+  // Level = ceil(log2(max(|ndc|, 1))): find smallest level where |ndc| / 2^level <= 1.
+  uint level = (uint)ceil(log2(max(maxNDC, 1.0)));
+  if (level >= NumClipmapLevels)
+    return;
 
-      if (all(virtualUV >= 0.0) && all(virtualUV <= 1.0))
-      {
-        // Compute page coordinate
-        uint2 pageCoord = uint2(virtualUV * float(VSM_PAGES_PER_LEVEL));
-        pageCoord = min(pageCoord, VSM_PAGES_PER_LEVEL - 1);
+  // Use the selected level's ClipmapWorldToUV for the actual page coordinate
+  float4 clipmapUV4 = mul(ClipmapWorldToUV[level], float4(worldPosition, 1.0));
 
-        // Encode request: level in high bits, page coordinate packed
-        uint requestIndex = level * VSM_PAGES_PER_LEVEL * VSM_PAGES_PER_LEVEL + pageCoord.y * VSM_PAGES_PER_LEVEL + pageCoord.x;
+  // Toroidal wrapping: the sample matrix is origin-centered so UVs can exceed [0,1]
+  float2 virtualUV = frac(clipmapUV4.xy);
 
-        // Atomically mark this page as requested
-        InterlockedOr(PageRequestBuffer[requestIndex], 1u);
-      }
+  // Compute page coordinate
+  uint2 pageCoord = uint2(virtualUV * float(VSM_PAGES_PER_LEVEL));
+  pageCoord = min(pageCoord, VSM_PAGES_PER_LEVEL - 1);
 
-      // Only mark the finest level that contains this pixel
-      break;
-    }
-  }
+  // Encode request index and mark this page as requested
+  uint requestIndex = level * VSM_PAGES_PER_LEVEL * VSM_PAGES_PER_LEVEL + pageCoord.y * VSM_PAGES_PER_LEVEL + pageCoord.x;
+  InterlockedOr(PageRequestBuffer[requestIndex], 1u);
 }

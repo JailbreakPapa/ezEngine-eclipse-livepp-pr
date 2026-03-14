@@ -1,0 +1,49 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "GPUParticleConstants.h"
+
+struct ezGPUParticle
+{
+  float3 Position;
+  float Size;
+  float3 Velocity;
+  float Life;
+  float MaxLife;
+  float RotationOffset;
+  float RotationSpeed;
+  uint Flags;
+  uint Color0;
+  uint Color1;
+  float InitialSize;
+  uint Padding0;
+};
+
+RWStructuredBuffer<ezGPUParticle> gpuParticlesCurrent;
+RWByteAddressBuffer gpuParticleCounters;
+
+[numthreads(GPU_PARTICLE_EMIT_THREAD_GROUP_SIZE, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  if (DTid.x >= GPUPartNumToEmit)
+    return;
+
+  uint idx = GPUPartEmitStartIndex + DTid.x;
+  if (idx >= GPUPartMaxParticles)
+    idx -= GPUPartMaxParticles;
+
+  // The CPU already wrote the particle data via UpdateBuffer.
+  // Set alive flag.
+  gpuParticlesCurrent[idx].Flags |= 1u;
+
+  // Increment alive counter
+  uint unused;
+  gpuParticleCounters.InterlockedAdd(0, 1, unused);
+}

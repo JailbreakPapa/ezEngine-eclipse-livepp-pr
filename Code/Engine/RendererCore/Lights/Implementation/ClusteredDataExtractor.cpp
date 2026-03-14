@@ -255,11 +255,14 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
   ezUInt32 uiBrightestDirectionalLightIndex = ezInvalidIndex;
   float fBrightestDirectionalLightIntensity = 0.0f;
   ezVec3 vBrightestDirectionalLightDirection = ezVec3(0, 0, -1);
+  float fBrightestDirLightPenumbraSize = 0.05f;
 
   // Lights
   {
     EZ_PROFILE_SCOPE("Lights");
     m_TempLightData.Clear();
+    m_TempFogVolumeData.Clear();
+    m_TempFogVolumeParams.Clear();
 
     auto batchList = ref_extractedRenderData.GetRenderDataBatchesWithCategory(ezDefaultRenderDataCategories::Light);
     const ezUInt32 uiBatchCount = batchList.GetBatchCount();
@@ -335,6 +338,7 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
             fBrightestDirectionalLightIntensity = fIntensity;
             uiBrightestDirectionalLightIndex = uiLightIndex;
             vBrightestDirectionalLightDirection = pDirLightRenderData->m_vDirection;
+            fBrightestDirLightPenumbraSize = pDirLightRenderData->m_fPenumbraSize;
           }
         }
         else if (auto pFillLightRenderData = ezDynamicCast<const ezFillLightRenderData*>(it))
@@ -373,6 +377,52 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
         else if (auto pVolFogRenderData = ezDynamicCast<const ezVolumetricFogRenderData*>(it))
         {
           pData->m_bVolumetricFogEnabled = true;
+
+          ezPerFogVolumeData& fogData = m_TempFogVolumeData.ExpandAndGetRef();
+
+          // Build world-to-volume matrix: translates to volume center, un-rotates, then scales by 1/halfExtents
+          // This maps world positions to [-1, 1] in the volume's local space
+          const ezTransform& globalTransform = pVolFogRenderData->m_GlobalTransform;
+          const ezVec3& halfExtents = pVolFogRenderData->m_vHalfExtents;
+
+          // Scale half-extents by the game object's uniform scale
+          ezVec3 scaledHalfExtents = halfExtents.CompMul(globalTransform.m_vScale);
+
+          // Build the inverse: world -> local
+          ezMat4 worldToLocal;
+          {
+            ezMat4 localToWorld = globalTransform.GetAsMat4();
+            // Apply half-extents scaling to columns 0,1,2 of localToWorld
+            for (int c = 0; c < 3; ++c)
+            {
+              float scale = scaledHalfExtents.GetData()[c];
+              if (scale > 0.0001f)
+              {
+                // Already included in localToWorld via globalTransform.m_vScale,
+                // so we just need to further scale by halfExtents
+                localToWorld.Element(c, 0) *= halfExtents.GetData()[c];
+                localToWorld.Element(c, 1) *= halfExtents.GetData()[c];
+                localToWorld.Element(c, 2) *= halfExtents.GetData()[c];
+              }
+            }
+            worldToLocal = localToWorld.GetInverse();
+          }
+
+          fogData.WorldToVolumeMatrix = worldToLocal;
+          fogData.Albedo = ezVec3(pVolFogRenderData->m_Albedo.r, pVolFogRenderData->m_Albedo.g, pVolFogRenderData->m_Albedo.b);
+          fogData.Density = pVolFogRenderData->m_fDensity;
+          fogData.AmbientLight = ezVec3(pVolFogRenderData->m_AmbientLight.r, pVolFogRenderData->m_AmbientLight.g, pVolFogRenderData->m_AmbientLight.b);
+          fogData.Anisotropy = pVolFogRenderData->m_fAnisotropy;
+          fogData.HeightFalloff = pVolFogRenderData->m_fHeightFalloff;
+          fogData.BaseHeight = globalTransform.m_vPosition.z;
+          fogData.FalloffExponent = 2.0f; // default edge falloff
+          fogData.Padding = 0.0f;
+
+          ezClusteredDataCPU::FogVolumeParams& params = m_TempFogVolumeParams.ExpandAndGetRef();
+          params.m_fNearPlane = pVolFogRenderData->m_fNearPlane;
+          params.m_fFarPlane = pVolFogRenderData->m_fFarPlane;
+          params.m_fTemporalBlendWeight = pVolFogRenderData->m_fTemporalBlendWeight;
+          params.m_fStartDistance = pVolFogRenderData->m_fStartDistance;
         }
         else
         {
@@ -383,6 +433,12 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
 
     pData->m_LightData = EZ_NEW_ARRAY(ezFrameAllocator::GetCurrentAllocator(), ezPerLightData, m_TempLightData.GetCount());
     pData->m_LightData.CopyFrom(m_TempLightData);
+
+    pData->m_FogVolumeData = EZ_NEW_ARRAY(ezFrameAllocator::GetCurrentAllocator(), ezPerFogVolumeData, m_TempFogVolumeData.GetCount());
+    pData->m_FogVolumeData.CopyFrom(m_TempFogVolumeData);
+
+    pData->m_FogVolumeParams = EZ_NEW_ARRAY(ezFrameAllocator::GetCurrentAllocator(), ezClusteredDataCPU::FogVolumeParams, m_TempFogVolumeParams.GetCount());
+    pData->m_FogVolumeParams.CopyFrom(m_TempFogVolumeParams);
 
     pData->m_uiBrightestDirectionalLightIndex = uiBrightestDirectionalLightIndex;
     pData->m_uiSkyIrradianceIndex = view.GetWorld()->GetIndex();
@@ -527,7 +583,7 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
   if (pData->m_bVSMEnabled && uiBrightestDirectionalLightIndex != ezInvalidIndex)
   {
     static ezUInt32 s_uiVSMFrameCounter = 0;
-    ezVirtualShadowPool::Update(pCamera->GetPosition(), vBrightestDirectionalLightDirection, s_uiVSMFrameCounter++, view.GetWorld());
+    ezVirtualShadowPool::Update(pCamera->GetPosition(), vBrightestDirectionalLightDirection, s_uiVSMFrameCounter++, view.GetWorld(), fBrightestDirLightPenumbraSize);
   }
 
   FillItemListAndClusterData(pData);

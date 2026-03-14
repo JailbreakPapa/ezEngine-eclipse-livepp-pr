@@ -36,6 +36,16 @@ public:
   float GetCloudCoverage() const;             // [ property ]
   void SetCloudDensity(float fDensity);       // [ property ]
   float GetCloudDensity() const;              // [ property ]
+  void SetCloudAbsorption(float fAbsorption); // [ property ]
+  float GetCloudAbsorption() const;           // [ property ]
+  void SetWindSpeed(float fSpeed);            // [ property ]
+  float GetWindSpeed() const;                 // [ property ]
+  void SetPhaseG(float fG);                   // [ property ]
+  float GetPhaseG() const;                    // [ property ]
+  void SetSilverLiningIntensity(float fIntensity); // [ property ]
+  float GetSilverLiningIntensity() const;          // [ property ]
+  void SetSilverLiningSpread(float fSpread);       // [ property ]
+  float GetSilverLiningSpread() const;             // [ property ]
 
 protected:
   ezRenderPipelineNodeInputPin m_PinDepthInput;
@@ -48,7 +58,7 @@ protected:
   float m_fCloudLayerBottom = 100.0f;
   float m_fCloudLayerTop = 250.0f;
   float m_fCloudCoverage = 0.5f;
-  float m_fCloudDensity = 0.05f;
+  float m_fCloudDensity = 0.3f;
   float m_fCloudAbsorption = 0.04f;
   float m_fWindSpeed = 10.0f;
   float m_fPhaseG = 0.6f;

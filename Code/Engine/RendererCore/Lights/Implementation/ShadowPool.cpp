@@ -49,6 +49,8 @@ ezCVarBool cvar_RenderingShadowsVisCascadeBounds("Rendering.Shadows.VisCascadeBo
 
 ezCVarFloat cvar_RenderingShadowsScaleMappingExponent("Rendering.Shadows.ScaleMappingExponent", 1.5f, ezCVarFlags::Default, "Determines how fast the shadow map size is reduced with screen space size");
 
+EZ_RENDERERCORE_DLL ezCVarInt cvar_RenderingShadowsQuality("Rendering.Shadows.Quality", 1, ezCVarFlags::Default, "Shadow filtering quality: 0=Low (PCF), 1=Medium (8-tap PCSS), 2=High (16-tap PCSS)");
+
 /// NOTE: The default values for these are defined in ezCoreRenderProfileConfig
 ///       but they can also be overwritten in custom game states at startup.
 EZ_RENDERERCORE_DLL ezCVarInt cvar_RenderingShadowsAtlasSize("Rendering.Shadows.AtlasSize", 4096, ezCVarFlags::RequiresDelayedSync, "The size of the shadow atlas texture.");
@@ -943,7 +945,7 @@ void ezShadowPool::OnExtractionEvent(const ezRenderWorldExtractionEvent& e)
 
       // empirical tweak factors
       const float fovFactor = 0.15f * ezMath::Pow(5.5f, fov.GetRadian());
-      const float rangeFactor = ezMath::Max(0.018f * fRange + 0.0098f * fRange * fRange, 0.1f);
+      const float rangeFactor = ezMath::Clamp(0.018f * fRange + 0.0098f * fRange * fRange, 0.1f, 10.0f);
       const float slopeBias = shadowData.m_fSlopeBias * penumbraSize * fovFactor * rangeFactor;
       const float constantBias = shadowData.m_fConstantBias * cvar_RenderingShadowsMaxShadowMapSize / uiShadowMapSize;
 

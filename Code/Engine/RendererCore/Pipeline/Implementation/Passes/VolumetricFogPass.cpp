@@ -89,24 +89,25 @@ void ezVolumetricFogPass::Execute(const ezRenderViewContext& renderViewContext, 
   ezGALTextureHandle hCurrentGrid = m_bUseGridA ? m_hFroxelGridA : m_hFroxelGridB;
   ezGALTextureHandle hHistoryGrid = m_bUseGridA ? m_hFroxelGridB : m_hFroxelGridA;
 
-  // Update constant buffer
+  // Update constant buffer - use parameters from the first fog volume, or defaults
   {
     ezVolumetricFogConstants* cb = ezRenderContext::GetConstantBufferData<ezVolumetricFogConstants>(m_hConstantBuffer);
     cb->FroxelGridSizeX = m_uiFroxelGridSizeX;
     cb->FroxelGridSizeY = m_uiFroxelGridSizeY;
     cb->FroxelGridSizeZ = m_uiFroxelGridSizeZ;
-    cb->FroxelNearPlane = 0.5f;
-    cb->FroxelFarPlane = 500.0f;
+
+    cb->FroxelNearPlane = pClusteredData->m_fFogNearPlane;
+    cb->FroxelFarPlane = pClusteredData->m_fFogFarPlane;
     cb->FroxelDepthSliceScale = 0.0f; // Computed in shader
     cb->FroxelDepthSliceBias = 0.0f;
-    cb->FogDensityScale = 0.05f;
-    cb->FogAlbedo = ezVec3(0.9f, 0.9f, 0.95f);
-    cb->FogAnisotropy = 0.3f;
-    cb->TemporalBlendWeight = 0.05f;
-    cb->FogHeightDensityFalloff = 0.01f;
+    cb->FogDensityScale = 0.0f; // No longer used, density comes from per-volume data
+    cb->FogAlbedo = ezVec3(1.0f);
+    cb->FogAnisotropy = 0.0f;
+    cb->TemporalBlendWeight = pClusteredData->m_fFogTemporalBlendWeight;
+    cb->FogHeightDensityFalloff = 0.0f;
     cb->FogBaseHeight = 0.0f;
     cb->VFogStartDistance = 0.0f;
-    cb->AmbientLight = ezVec3(0.15f, 0.15f, 0.2f);
+    cb->AmbientLight = ezVec3(0.0f);
 
     // Store previous frame's view-projection matrix for temporal reprojection
     cb->PrevWorldToClipMatrix = m_PrevViewProjectionMatrix;

@@ -52,6 +52,7 @@ protected:
   ezShaderResourceHandle m_hClassifyShader;
   ezShaderResourceHandle m_hPrepareArgsShader;
   ezShaderResourceHandle m_hTraceShader;
+  ezShaderResourceHandle m_hSpatialBlurShader;
   ezShaderResourceHandle m_hTemporalShader;
 
   // Hi-Z texture with full mip chain
@@ -66,11 +67,11 @@ protected:
   ezGALTextureHandle m_hSSRResultB;
   bool m_bUseResultA = true;
 
-  // Raw trace output (written by trace, read by temporal)
+  // Raw trace output (written by trace, read by spatial blur)
   ezGALTextureHandle m_hSSRTraceResult;
 
-  // Previous frame's scene color for resolving hit colors
-  ezGALTextureHandle m_hPrevFrameColor;
+  // Spatial blur output (written by blur, published as SSR result)
+  ezGALTextureHandle m_hSSRBlurIntermediate;
 
   // Classify output buffer (packed pixel coordinates)
   ezGALBufferHandle m_hClassifyBuffer;
@@ -89,6 +90,12 @@ protected:
   float m_fMaxRayDistance = 100.0f;
   float m_fRoughnessThreshold = 0.5f;
   float m_fTemporalBlendWeight = 0.05f;
+  float m_fEdgeFadeStart = 0.05f;
+  float m_fEdgeFadeEnd = 0.15f;
+
+  ezUInt32 m_uiFrameIndex = 0;
+  float m_fBlurRadius = 4.0f;
+  float m_fBlurSharpness = 10.0f;
 
   ezMat4 m_PrevViewProjectionMatrix = ezMat4::MakeIdentity();
 };

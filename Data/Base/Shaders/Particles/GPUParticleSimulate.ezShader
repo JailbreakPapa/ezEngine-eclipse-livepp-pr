@@ -1,0 +1,224 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/CameraConstantsAccess.h>
+#include "GPUParticleConstants.h"
+
+struct ezGPUParticle
+{
+  float3 Position;
+  float Size;
+  float3 Velocity;
+  float Life;
+  float MaxLife;
+  float RotationOffset;
+  float RotationSpeed;
+  uint Flags;
+  uint Color0;
+  uint Color1;
+  float InitialSize;
+  uint Padding0;
+};
+
+RWStructuredBuffer<ezGPUParticle> gpuParticlesCurrent;
+RWByteAddressBuffer gpuParticleCounters;
+Texture2D<float> SceneDepth;
+Texture3D<float> SDFTexture;
+
+float SampleSDF(float3 worldPos)
+{
+  float3 uvw = (worldPos - GPUPartSDFWorldMin) / (GPUPartSDFWorldMax - GPUPartSDFWorldMin);
+  if (any(uvw < 0) || any(uvw > 1))
+    return 1000.0;
+  return SDFTexture.SampleLevel(PointClampSampler, uvw, 0);
+}
+
+float3 SDFGradient(float3 worldPos)
+{
+  float eps = GPUPartSDFVoxelSize * 0.5;
+  float3 grad;
+  grad.x = SampleSDF(worldPos + float3(eps, 0, 0)) - SampleSDF(worldPos - float3(eps, 0, 0));
+  grad.y = SampleSDF(worldPos + float3(0, eps, 0)) - SampleSDF(worldPos - float3(0, eps, 0));
+  grad.z = SampleSDF(worldPos + float3(0, 0, eps)) - SampleSDF(worldPos - float3(0, 0, eps));
+  float len = length(grad);
+  return len > 0.0001 ? grad / len : float3(0, 1, 0);
+}
+
+float3 ReconstructWorldPos(int2 texCoord, float depth)
+{
+  float2 uv = (float2(texCoord) + 0.5) / float2(GPUPartDepthBufferWidth, GPUPartDepthBufferHeight);
+  float2 ndc = uv * float2(2, -2) + float2(-1, 1);
+  float4 clipPos = float4(ndc, depth, 1.0);
+  float4 worldPos = mul(GPUPartInverseViewProjectionMatrix, clipPos);
+  return worldPos.xyz / worldPos.w;
+}
+
+void HandleCollisionReaction(inout ezGPUParticle p, float3 prevPosition, float3 hitNormal)
+{
+  if (GPUPartCollisionReaction == 0) // Bounce
+  {
+    float3 tangent = p.Velocity - hitNormal * dot(p.Velocity, hitNormal);
+    float3 normalComp = tangent - p.Velocity;
+    p.Velocity = normalComp * GPUPartCollisionBounceFactor + tangent * GPUPartCollisionSlideFactor;
+    p.Position = prevPosition;
+  }
+  else if (GPUPartCollisionReaction == 1) // Die
+  {
+    p.Life = 0;
+    p.Flags &= ~1u;
+  }
+  else // Stop
+  {
+    p.Velocity = float3(0, 0, 0);
+    p.Position = prevPosition;
+  }
+}
+
+float4 EvaluateColorOverLife(float normalizedAge)
+{
+  return lerp(GPUPartColorOverLifeStart, GPUPartColorOverLifeEnd, normalizedAge);
+}
+
+[numthreads(GPU_PARTICLE_SIM_THREAD_GROUP_SIZE, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint idx = DTid.x;
+  if (idx >= GPUPartMaxParticles)
+    return;
+
+  ezGPUParticle p = gpuParticlesCurrent[idx];
+
+  // Skip dead particles
+  if ((p.Flags & 1u) == 0)
+    return;
+
+  // Age the particle
+  p.Life -= GPUPartDeltaTime * p.MaxLife;
+
+  if (p.Life <= 0.0)
+  {
+    p.Flags &= ~1u;
+    p.Life = 0;
+    gpuParticlesCurrent[idx] = p;
+
+    uint deadIdx;
+    gpuParticleCounters.InterlockedAdd(4, 1, deadIdx);
+    gpuParticleCounters.Store((2 + deadIdx) * 4, idx);
+    gpuParticleCounters.InterlockedAdd(0, -1u);
+    return;
+  }
+
+  float normalizedAge = 1.0 - p.Life;
+
+  // Gravity (Y-up)
+  p.Velocity.y -= GPUPartGravity * GPUPartDeltaTime;
+
+  // Wind
+  p.Velocity += GPUPartWindDirection * GPUPartWindStrength * GPUPartDeltaTime;
+
+  // Drag
+  float speed = length(p.Velocity);
+  if (speed > 0.001)
+  {
+    float dragForce = GPUPartDragCoefficient * speed * speed * GPUPartDeltaTime;
+    float newSpeed = max(speed - dragForce, 0.0);
+    p.Velocity *= (newSpeed / speed);
+  }
+
+  // Integration
+  float3 prevPosition = p.Position;
+  p.Position += p.Velocity * GPUPartDeltaTime;
+
+  // Depth buffer collision
+  if (GPUPartEnableDepthCollision)
+  {
+    float4 clipPos = mul(GPUPartViewProjectionMatrix, float4(p.Position, 1.0));
+    float2 ndc = clipPos.xy / clipPos.w;
+    float2 uv = ndc * float2(0.5, -0.5) + 0.5;
+
+    if (all(uv >= 0) && all(uv <= 1))
+    {
+      int2 texCoord = int2(uv * float2(GPUPartDepthBufferWidth, GPUPartDepthBufferHeight));
+      float sceneDepthRaw = SceneDepth.Load(int3(texCoord, 0));
+      float linearSceneDepth = LinearizeZBufferDepth(sceneDepthRaw);
+      float linearParticleDepth = clipPos.w;
+
+      if (linearParticleDepth > linearSceneDepth &&
+          linearParticleDepth < linearSceneDepth + GPUPartCollisionThickness)
+      {
+        // Reconstruct surface normal from depth neighbors
+        float dL = SceneDepth.Load(int3(texCoord + int2(-1, 0), 0));
+        float dR = SceneDepth.Load(int3(texCoord + int2(1, 0), 0));
+        float dU = SceneDepth.Load(int3(texCoord + int2(0, -1), 0));
+        float dD = SceneDepth.Load(int3(texCoord + int2(0, 1), 0));
+        float3 posL = ReconstructWorldPos(texCoord + int2(-1, 0), dL);
+        float3 posR = ReconstructWorldPos(texCoord + int2(1, 0), dR);
+        float3 posU = ReconstructWorldPos(texCoord + int2(0, -1), dU);
+        float3 posD = ReconstructWorldPos(texCoord + int2(0, 1), dD);
+        float3 hitNormal = normalize(cross(posR - posL, posD - posU));
+
+        HandleCollisionReaction(p, prevPosition, hitNormal);
+
+        if ((p.Flags & 1u) == 0)
+        {
+          gpuParticlesCurrent[idx] = p;
+          uint deadIdx;
+          gpuParticleCounters.InterlockedAdd(4, 1, deadIdx);
+          gpuParticleCounters.Store((2 + deadIdx) * 4, idx);
+          gpuParticleCounters.InterlockedAdd(0, -1u);
+          return;
+        }
+      }
+    }
+  }
+
+  // SDF collision
+  if (GPUPartEnableSDFCollision)
+  {
+    float dist = SampleSDF(p.Position);
+    if (dist < 0.0)
+    {
+      float3 sdfNormal = SDFGradient(p.Position);
+      HandleCollisionReaction(p, prevPosition, sdfNormal);
+
+      if ((p.Flags & 1u) == 0)
+      {
+        gpuParticlesCurrent[idx] = p;
+        uint deadIdx;
+        gpuParticleCounters.InterlockedAdd(4, 1, deadIdx);
+        gpuParticleCounters.Store((2 + deadIdx) * 4, idx);
+        gpuParticleCounters.InterlockedAdd(0, -1u);
+        return;
+      }
+
+      // Push out of surface
+      if (GPUPartCollisionReaction != 1)
+      {
+        p.Position += sdfNormal * (-dist + 0.01);
+      }
+    }
+  }
+
+  // Color over life (modulate packed color)
+  // For simplicity, re-encode the color every frame from original + gradient
+  float4 lifeColor = EvaluateColorOverLife(normalizedAge);
+  uint rg = (f32tof16(lifeColor.r)) | (f32tof16(lifeColor.g) << 16);
+  uint ba = (f32tof16(lifeColor.b)) | (f32tof16(lifeColor.a) << 16);
+  p.Color0 = rg;
+  p.Color1 = ba;
+
+  // Size over life (simple lerp for now: full size at start, shrinking to 0)
+  p.Size = p.InitialSize * p.Life;
+
+  // Rotation
+  p.RotationOffset += p.RotationSpeed * GPUPartDeltaTime;
+
+  gpuParticlesCurrent[idx] = p;
+}

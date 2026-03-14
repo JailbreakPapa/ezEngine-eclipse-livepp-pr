@@ -10,7 +10,7 @@
 #include <RendererFoundation/Resources/Texture.h>
 
 // clang-format off
-EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezVolumetricCloudsPass, 1, ezRTTIDefaultAllocator<ezVolumetricCloudsPass>)
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezVolumetricCloudsPass, 2, ezRTTIDefaultAllocator<ezVolumetricCloudsPass>)
 {
   EZ_BEGIN_PROPERTIES
   {
@@ -19,7 +19,12 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezVolumetricCloudsPass, 1, ezRTTIDefaultAllocato
     EZ_ACCESSOR_PROPERTY("CloudLayerBottom", GetCloudLayerBottom, SetCloudLayerBottom)->AddAttributes(new ezDefaultValueAttribute(100.0f)),
     EZ_ACCESSOR_PROPERTY("CloudLayerTop", GetCloudLayerTop, SetCloudLayerTop)->AddAttributes(new ezDefaultValueAttribute(250.0f)),
     EZ_ACCESSOR_PROPERTY("CloudCoverage", GetCloudCoverage, SetCloudCoverage)->AddAttributes(new ezClampValueAttribute(0.0f, 1.0f), new ezDefaultValueAttribute(0.5f)),
-    EZ_ACCESSOR_PROPERTY("CloudDensity", GetCloudDensity, SetCloudDensity)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.05f)),
+    EZ_ACCESSOR_PROPERTY("CloudDensity", GetCloudDensity, SetCloudDensity)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.3f)),
+    EZ_ACCESSOR_PROPERTY("CloudAbsorption", GetCloudAbsorption, SetCloudAbsorption)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.04f)),
+    EZ_ACCESSOR_PROPERTY("WindSpeed", GetWindSpeed, SetWindSpeed)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(10.0f)),
+    EZ_ACCESSOR_PROPERTY("PhaseG", GetPhaseG, SetPhaseG)->AddAttributes(new ezClampValueAttribute(0.0f, 0.99f), new ezDefaultValueAttribute(0.6f)),
+    EZ_ACCESSOR_PROPERTY("SilverLiningIntensity", GetSilverLiningIntensity, SetSilverLiningIntensity)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.5f)),
+    EZ_ACCESSOR_PROPERTY("SilverLiningSpread", GetSilverLiningSpread, SetSilverLiningSpread)->AddAttributes(new ezClampValueAttribute(1.0f, 32.0f), new ezDefaultValueAttribute(8.0f)),
   }
   EZ_END_PROPERTIES;
   EZ_BEGIN_ATTRIBUTES
@@ -111,7 +116,7 @@ void ezVolumetricCloudsPass::Execute(const ezRenderViewContext& renderViewContex
     cb->SilverLiningIntensity = m_fSilverLiningIntensity;
     cb->SilverLiningSpread = m_fSilverLiningSpread;
     cb->CloudTextureSize.Set((float)quarterWidth, (float)quarterHeight);
-    cb->TemporalBlendWeight = 0.05f;
+    cb->TemporalBlendWeight = m_uiFrameIndex == 0 ? 1.0f : 0.05f;
     cb->FrameIndex = m_uiFrameIndex;
     cb->PrevWorldToClipMatrix = m_PrevViewProjectionMatrix;
   }
@@ -136,20 +141,16 @@ void ezVolumetricCloudsPass::Execute(const ezRenderViewContext& renderViewContex
   }
 
   // Pass 2: Composite clouds with scene (fullscreen)
-  // Uses MRT: RT0 = composited scene color, RT1 = cloud-only history for next frame
   {
     EZ_PROFILE_SCOPE("Cloud Composite");
 
     ezGALTextureHandle hColorTarget = pColorOutput->m_TextureHandle;
 
-    // Ensure history textures exist at the correct resolution
-    ezUInt32 fullWidth = pColorTex->GetDescription().m_uiWidth;
-    ezUInt32 fullHeight = pColorTex->GetDescription().m_uiHeight;
-    EnsureHistoryTextures(fullWidth, fullHeight);
+    // Ensure history textures exist at the correct resolution (quarter-res for temporal)
+    EnsureHistoryTextures(quarterWidth, quarterHeight);
 
-    // Determine which history texture to read from (previous frame) and write to (current frame)
+    // Determine which history texture to read from (previous frame)
     ezGALTextureHandle hHistoryRead = m_bUseHistoryA ? m_hCloudHistoryB : m_hCloudHistoryA;
-    ezGALTextureHandle hHistoryWrite = m_bUseHistoryA ? m_hCloudHistoryA : m_hCloudHistoryB;
 
     // Allocate temp copy of the scene color
     ezGALTextureCreationDescription tempDesc = pColorOutput->m_Desc;
@@ -159,16 +160,15 @@ void ezVolumetricCloudsPass::Execute(const ezRenderViewContext& renderViewContex
     // Copy current color to temp
     renderViewContext.m_pRenderContext->GetCommandEncoder()->CopyTexture(hTempSceneColor, hColorTarget);
 
+    // Single render target: composited scene only
     ezGALRenderingSetup renderingSetup;
     renderingSetup.SetColorTarget(0, pDevice->GetDefaultRenderTargetView(hColorTarget));
-    renderingSetup.SetColorTarget(1, pDevice->GetDefaultRenderTargetView(hHistoryWrite));
 
     auto pCommandEncoder = renderViewContext.m_pRenderContext->BeginRenderingScope(renderViewContext, renderingSetup, "Cloud Composite", renderViewContext.m_pCamera->IsStereoscopic());
 
     ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
     bindGroup.BindBuffer("ezVolumetricCloudsConstants", m_hConstantBuffer);
     bindGroup.BindTexture("CurrentCloudTexture", hQuarterResTex);
-    bindGroup.BindTexture("SceneDepth", pDepthInput->m_TextureHandle);
     bindGroup.BindTexture("SceneColor", hTempSceneColor);
     bindGroup.BindTexture("HistoryCloudTexture", hHistoryRead);
 
@@ -178,6 +178,10 @@ void ezVolumetricCloudsPass::Execute(const ezRenderViewContext& renderViewContex
 
     ezGPUResourcePool::GetDefaultInstance()->ReturnRenderTarget(hTempSceneColor);
   }
+
+  // Copy quarter-res cloud result to history for next frame's temporal reprojection
+  renderViewContext.m_pRenderContext->GetCommandEncoder()->CopyTexture(
+    m_bUseHistoryA ? m_hCloudHistoryA : m_hCloudHistoryB, hQuarterResTex);
 
   // Return temporary texture
   ezGPUResourcePool::GetDefaultInstance()->ReturnRenderTarget(hQuarterResTex);
@@ -237,16 +241,31 @@ ezResult ezVolumetricCloudsPass::Serialize(ezStreamWriter& inout_stream) const
   inout_stream << m_fCloudLayerTop;
   inout_stream << m_fCloudCoverage;
   inout_stream << m_fCloudDensity;
+  inout_stream << m_fCloudAbsorption;
+  inout_stream << m_fWindSpeed;
+  inout_stream << m_fPhaseG;
+  inout_stream << m_fSilverLiningIntensity;
+  inout_stream << m_fSilverLiningSpread;
   return EZ_SUCCESS;
 }
 
 ezResult ezVolumetricCloudsPass::Deserialize(ezStreamReader& inout_stream)
 {
   EZ_SUCCEED_OR_RETURN(SUPER::Deserialize(inout_stream));
+  const ezUInt32 uiVersion = ezTypeVersionReadContext::GetContext()->GetTypeVersion(GetStaticRTTI());
   inout_stream >> m_fCloudLayerBottom;
   inout_stream >> m_fCloudLayerTop;
   inout_stream >> m_fCloudCoverage;
   inout_stream >> m_fCloudDensity;
+
+  if (uiVersion >= 2)
+  {
+    inout_stream >> m_fCloudAbsorption;
+    inout_stream >> m_fWindSpeed;
+    inout_stream >> m_fPhaseG;
+    inout_stream >> m_fSilverLiningIntensity;
+    inout_stream >> m_fSilverLiningSpread;
+  }
   return EZ_SUCCESS;
 }
 
@@ -261,5 +280,20 @@ float ezVolumetricCloudsPass::GetCloudCoverage() const { return m_fCloudCoverage
 
 void ezVolumetricCloudsPass::SetCloudDensity(float fDensity) { m_fCloudDensity = ezMath::Max(fDensity, 0.0f); }
 float ezVolumetricCloudsPass::GetCloudDensity() const { return m_fCloudDensity; }
+
+void ezVolumetricCloudsPass::SetCloudAbsorption(float fAbsorption) { m_fCloudAbsorption = ezMath::Max(fAbsorption, 0.0f); }
+float ezVolumetricCloudsPass::GetCloudAbsorption() const { return m_fCloudAbsorption; }
+
+void ezVolumetricCloudsPass::SetWindSpeed(float fSpeed) { m_fWindSpeed = ezMath::Max(fSpeed, 0.0f); }
+float ezVolumetricCloudsPass::GetWindSpeed() const { return m_fWindSpeed; }
+
+void ezVolumetricCloudsPass::SetPhaseG(float fG) { m_fPhaseG = ezMath::Clamp(fG, 0.0f, 0.99f); }
+float ezVolumetricCloudsPass::GetPhaseG() const { return m_fPhaseG; }
+
+void ezVolumetricCloudsPass::SetSilverLiningIntensity(float fIntensity) { m_fSilverLiningIntensity = ezMath::Max(fIntensity, 0.0f); }
+float ezVolumetricCloudsPass::GetSilverLiningIntensity() const { return m_fSilverLiningIntensity; }
+
+void ezVolumetricCloudsPass::SetSilverLiningSpread(float fSpread) { m_fSilverLiningSpread = ezMath::Clamp(fSpread, 1.0f, 32.0f); }
+float ezVolumetricCloudsPass::GetSilverLiningSpread() const { return m_fSilverLiningSpread; }
 
 EZ_STATICLINK_FILE(RendererCore, RendererCore_Pipeline_Implementation_Passes_VolumetricCloudsPass);

@@ -12,11 +12,20 @@
 #include <Shaders/Common/GlobalConstants.h>
 #include <Shaders/Common/LightData.h>
 
+#if defined(USE_HAIR_SHADING)
+#include <Shaders/Common/HairBRDF.h>
+#endif
+
 // Frame data:
 Texture2D ShadowAtlasTexture;
 SamplerComparisonState ShadowSampler;
 
 #include <Shaders/Common/VirtualShadowMapSampling.h>
+
+// Default shadow quality if not set by shader permutation (0=Low, 1=Medium, 2=High)
+#if !defined(SHADOW_QUALITY)
+#  define SHADOW_QUALITY 1
+#endif
 
 Texture2D DecalAtlasBaseColorTexture;
 Texture2D DecalAtlasNormalTexture;
@@ -154,8 +163,89 @@ uint GetPointShadowFaceIndex(float3 dir)
 
 float SampleShadow(float3 shadowPosition, float2x2 randomRotation, float penumbraSize)
 {
-  // Simple spiral pattern with every other sample flipped around the origin,
-  // source: https://c-core-games.com/Generator/SpiralPatterns.html?p=O&n=8
+#if SHADOW_QUALITY == 0 // LOW
+  // Low: 5-tap PCF with fixed kernel, no blocker search
+  const float2 offsets[] = {
+    {0.0f, 0.0f},
+    {1.0f, 0.0f},
+    {-1.0f, 0.0f},
+    {0.0f, 1.0f},
+    {0.0f, -1.0f},
+  };
+
+  float filterSize = penumbraSize * 0.5;
+  float shadowTerm = 0.0;
+  [unroll] for (int i = 0; i < 5; ++i)
+  {
+    float2 offset = mul(randomRotation, offsets[i]) * filterSize;
+    shadowTerm += ShadowAtlasTexture.SampleCmpLevelZero(ShadowSampler, shadowPosition.xy + offset, shadowPosition.z);
+  }
+  return shadowTerm / 5.0;
+
+#elif SHADOW_QUALITY == 2 // HIGH
+  // High: 8-sample blocker search + 16-sample Poisson disk PCF
+  const float2 blockerOffsets[] = {
+    {0.1250f, 0.0000f},
+    {-0.1768f, -0.1768f},
+    {0.0000f, 0.3750f},
+    {0.3536f, -0.3536f},
+    {-0.6250f, 0.0000f},
+    {0.5303f, 0.5303f},
+    {-0.0000f, -0.8750f},
+    {-0.7071f, 0.7071f},
+  };
+
+  const float2 filterOffsets[] = {
+    {0.0625f, 0.0000f},
+    {-0.0884f, -0.0884f},
+    {0.0000f, 0.1875f},
+    {0.1768f, -0.1768f},
+    {-0.3125f, 0.0000f},
+    {0.2652f, 0.2652f},
+    {-0.0000f, -0.4375f},
+    {-0.3536f, 0.3536f},
+    {0.5000f, 0.0625f},
+    {-0.4419f, -0.1913f},
+    {0.1250f, 0.5303f},
+    {0.3750f, -0.4419f},
+    {-0.5625f, 0.2500f},
+    {0.5303f, 0.3750f},
+    {-0.2500f, -0.5625f},
+    {-0.5303f, 0.5303f},
+  };
+
+  // Step 1: Blocker search
+  float searchRadius = penumbraSize * 2.0;
+  float blockerSum = 0.0;
+  float blockerCount = 0.0;
+  [unroll] for (int i = 0; i < 8; ++i)
+  {
+    float2 offset = mul(randomRotation, blockerOffsets[i]) * searchRadius;
+    float sampledDepth = ShadowAtlasTexture.SampleLevel(PointClampSampler, shadowPosition.xy + offset, 0).r;
+    if (sampledDepth < shadowPosition.z)
+    {
+      blockerSum += sampledDepth;
+      blockerCount += 1.0;
+    }
+  }
+  if (blockerCount < 0.5) return 1.0;
+
+  // Step 2: Penumbra estimation
+  float avgBlockerDepth = blockerSum / blockerCount;
+  float estimatedPenumbra = penumbraSize * (shadowPosition.z - avgBlockerDepth) / max(avgBlockerDepth, 0.0001);
+  estimatedPenumbra = clamp(estimatedPenumbra, penumbraSize * 0.1, searchRadius);
+
+  // Step 3: Variable-width PCF with 16 samples
+  float shadowTerm = 0.0;
+  [unroll] for (int j = 0; j < 16; ++j)
+  {
+    float2 offset = mul(randomRotation, filterOffsets[j]) * estimatedPenumbra;
+    shadowTerm += ShadowAtlasTexture.SampleCmpLevelZero(ShadowSampler, shadowPosition.xy + offset, shadowPosition.z);
+  }
+  return shadowTerm / 16.0;
+
+#else // SHADOW_QUALITY_MEDIUM (default)
+  // Medium: 8-sample PCSS (blocker search + variable-width PCF)
   const float2 offsets[] = {
     {0.1250f, 0.0000f},
     {-0.1768f, -0.1768f},
@@ -167,20 +257,35 @@ float SampleShadow(float3 shadowPosition, float2x2 randomRotation, float penumbr
     {-0.7071f, 0.7071f},
   };
 
-#if 0
-  return ShadowAtlasTexture.SampleCmpLevelZero(ShadowSampler, shadowPosition.xy, shadowPosition.z);
-#else
-  float shadowTerm = 0.0f;
-  for (int i = 0; i < 8; ++i)
+  // Step 1: Blocker search — sample raw depth (non-comparison) to find average blocker depth
+  float searchRadius = penumbraSize * 2.0;
+  float blockerSum = 0.0;
+  float blockerCount = 0.0;
+  [unroll] for (int i = 0; i < 8; ++i)
   {
-    float2 offset = mul(randomRotation, offsets[i]) * penumbraSize;
-
-    float2 samplePos = shadowPosition.xy + offset;
-    float sampleDepth = shadowPosition.z;
-    shadowTerm += ShadowAtlasTexture.SampleCmpLevelZero(ShadowSampler, samplePos, sampleDepth);
+    float2 offset = mul(randomRotation, offsets[i]) * searchRadius;
+    float sampledDepth = ShadowAtlasTexture.SampleLevel(PointClampSampler, shadowPosition.xy + offset, 0).r;
+    if (sampledDepth < shadowPosition.z)
+    {
+      blockerSum += sampledDepth;
+      blockerCount += 1.0;
+    }
   }
+  if (blockerCount < 0.5) return 1.0; // No blockers — fully lit
 
-  return shadowTerm / 8.0f;
+  // Step 2: Penumbra estimation
+  float avgBlockerDepth = blockerSum / blockerCount;
+  float estimatedPenumbra = penumbraSize * (shadowPosition.z - avgBlockerDepth) / max(avgBlockerDepth, 0.0001);
+  estimatedPenumbra = clamp(estimatedPenumbra, penumbraSize * 0.1, searchRadius);
+
+  // Step 3: Variable-width PCF
+  float shadowTerm = 0.0;
+  [unroll] for (int j = 0; j < 8; ++j)
+  {
+    float2 offset = mul(randomRotation, offsets[j]) * estimatedPenumbra;
+    shadowTerm += ShadowAtlasTexture.SampleCmpLevelZero(ShadowSampler, shadowPosition.xy + offset, shadowPosition.z);
+  }
+  return shadowTerm / 8.0;
 #endif
 }
 
@@ -220,7 +325,7 @@ float CalculateShadowTerm(float3 worldPosition, float3 vertexNormal, float3 ligh
 
   // normal offset bias
   float normalOffsetBias = shadowParams.x * distanceToLight;
-  float normalOffsetScale = normalOffsetBias - dot(vertexNormal, lightVector) * normalOffsetBias;
+  float normalOffsetScale = normalOffsetBias * saturate(1.0 - dot(vertexNormal, lightVector));
   worldPosition += vertexNormal * normalOffsetScale;
 
   float constantBias = shadowParams.y;
@@ -271,6 +376,7 @@ float CalculateShadowTerm(float3 worldPosition, float3 vertexNormal, float3 ligh
 #endif
 
     constantBias /= penumbraSizeScale;
+    constantBias = max(constantBias, 1.0 / 65535.0); // D16 minimum depth step
     penumbraSize = (penumbraSize + shadowParams2.w * viewDistance) * penumbraSizeScale;
 
     if (cascadeIndex == lastCascadeIndex)
@@ -637,7 +743,13 @@ AccumulatedLight CalculateLighting(ezMaterialData matData, ezPerClusterData clus
         lightColor = lerp(1.0f, debugColor, 0.5f);
 #endif
 
-        AccumulateLight(totalLight, DefaultShading(matData, lightVector, viewVector), lightColor * (attenuation * shadowTerm), lightData.specularMultiplier);
+        AccumulateLight(totalLight,
+#if defined(USE_HAIR_SHADING)
+          HairShading(matData, lightVector, viewVector),
+#else
+          DefaultShading(matData, lightVector, viewVector),
+#endif
+          lightColor * (attenuation * shadowTerm), lightData.specularMultiplier);
 
 #if defined(USE_MATERIAL_SUBSURFACE_COLOR)
         AccumulateLight(totalLight, SubsurfaceShading(matData, lightVector, viewVector), lightColor * (attenuation * subsurfaceShadow));
@@ -676,7 +788,7 @@ AccumulatedLight CalculateLighting(ezMaterialData matData, ezPerClusterData clus
   // When SSR is not bound, the fallback texture returns zero so probes are used exclusively.
   {
     float3 ssrUV = float3(screenPosition.xy * ViewportSize.zw, s_ActiveCameraEyeIndex);
-    float4 ssrData = SSRTexture.SampleLevel(PointClampSampler, ssrUV, 0);
+    float4 ssrData = SSRTexture.SampleLevel(LinearClampSampler, ssrUV, 0);
     float ssrConfidence = ssrData.a;
     reflection = lerp(reflection, ssrData.rgb, ssrConfidence);
   }

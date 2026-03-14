@@ -121,6 +121,7 @@ void ezDirectionalLightComponent::OnMsgExtractRenderData(ezMsgExtractRenderData&
   pRenderData->m_fSpecularMultiplier = m_fSpecularMultiplier;
 
   pRenderData->m_vDirection = GetOwner()->GetGlobalRotation() * ezVec3(-1, 0, 0);
+  pRenderData->m_fPenumbraSize = m_fPenumbraSize;
 
   if (m_bCastShadows)
   {

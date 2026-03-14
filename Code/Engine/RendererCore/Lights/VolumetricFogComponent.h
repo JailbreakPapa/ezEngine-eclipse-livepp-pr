@@ -1,14 +1,12 @@
 #pragma once
 
-#include <Core/World/SettingsComponent.h>
-#include <Core/World/SettingsComponentManager.h>
+#include <Core/World/World.h>
+#include <RendererCore/Components/RenderComponent.h>
 #include <RendererCore/Pipeline/RenderData.h>
 
 struct ezMsgUpdateLocalBounds;
 
-using ezVolumetricFogComponentManager = ezSettingsComponentManager<class ezVolumetricFogComponent>;
-
-/// Render data for volumetric fog.
+/// Render data for a volumetric fog volume.
 class EZ_RENDERERCORE_DLL ezVolumetricFogRenderData : public ezRenderData
 {
   EZ_ADD_DYNAMIC_REFLECTION(ezVolumetricFogRenderData, ezRenderData);
@@ -16,7 +14,6 @@ class EZ_RENDERERCORE_DLL ezVolumetricFogRenderData : public ezRenderData
 public:
   float m_fDensity;
   float m_fAnisotropy;
-  float m_fBaseHeight;
   float m_fHeightFalloff;
   float m_fStartDistance;
   float m_fNearPlane;
@@ -24,17 +21,26 @@ public:
   ezColor m_Albedo;
   ezColor m_AmbientLight;
   float m_fTemporalBlendWeight;
+
+  /// The world-space transform of the fog volume (position + rotation + scale).
+  ezTransform m_GlobalTransform;
+
+  /// Half-extents of the fog volume in local space (the full box is 2x this).
+  ezVec3 m_vHalfExtents;
 };
 
-/// A world component configuring volumetric fog.
+using ezVolumetricFogComponentManager = ezComponentManager<class ezVolumetricFogComponent, ezBlockStorageType::Compact>;
+
+/// A volumetric fog volume defined by an oriented bounding box.
 ///
-/// Place this in a scene to enable froxel-based volumetric fog with per-light
-/// scattering. Controls density, scattering anisotropy, height falloff, and
-/// temporal reprojection weight. Only one instance per scene is needed (uses
-/// ezSettingsComponent pattern like ezFogComponent).
-class EZ_RENDERERCORE_DLL ezVolumetricFogComponent : public ezSettingsComponent
+/// Place one or more of these in a scene to create localized fog regions.
+/// The fog is rendered using a froxel-based approach with per-light scattering.
+/// Each volume contributes density within its bounding box, with smooth falloff
+/// at the edges. Height-based density falloff is in world space relative to the
+/// game object's Z position.
+class EZ_RENDERERCORE_DLL ezVolumetricFogComponent : public ezRenderComponent
 {
-  EZ_DECLARE_COMPONENT_TYPE(ezVolumetricFogComponent, ezSettingsComponent, ezVolumetricFogComponentManager);
+  EZ_DECLARE_COMPONENT_TYPE(ezVolumetricFogComponent, ezRenderComponent, ezVolumetricFogComponentManager);
 
   //////////////////////////////////////////////////////////////////////////
   // ezComponent
@@ -49,11 +55,20 @@ protected:
   virtual void OnDeactivated() override;
 
   //////////////////////////////////////////////////////////////////////////
+  // ezRenderComponent
+
+public:
+  virtual ezResult GetLocalBounds(ezBoundingBoxSphere& out_bounds, bool& out_bAlwaysVisible, ezMsgUpdateLocalBounds& ref_msg) override;
+
+  //////////////////////////////////////////////////////////////////////////
   // ezVolumetricFogComponent
 
 public:
   ezVolumetricFogComponent();
   ~ezVolumetricFogComponent();
+
+  void SetExtents(const ezVec3& vExtents);       // [ property ]
+  const ezVec3& GetExtents() const;              // [ property ]
 
   void SetDensity(float fDensity);             // [ property ]
   float GetDensity() const;                    // [ property ]
@@ -82,17 +97,21 @@ public:
   void SetTemporalBlendWeight(float fWeight);  // [ property ]
   float GetTemporalBlendWeight() const;        // [ property ]
 
+  void SetFalloffExponent(float fExponent);    // [ property ]
+  float GetFalloffExponent() const;            // [ property ]
+
 protected:
-  void OnUpdateLocalBounds(ezMsgUpdateLocalBounds& msg);
   void OnMsgExtractRenderData(ezMsgExtractRenderData& msg) const;
 
-  float m_fDensity = 0.5f;
+  ezVec3 m_vExtents = ezVec3(10.0f);
+  float m_fDensity = 0.05f;
   float m_fAnisotropy = 0.3f;
   float m_fHeightFalloff = 0.1f;
   ezColor m_Albedo = ezColor::White;
-  ezColor m_AmbientLight = ezColor(0.05f, 0.05f, 0.08f);
+  ezColor m_AmbientLight = ezColor(0.15f, 0.15f, 0.2f);
   float m_fStartDistance = 0.0f;
   float m_fNearPlane = 0.5f;
   float m_fFarPlane = 500.0f;
   float m_fTemporalBlendWeight = 0.05f;
+  float m_fFalloffExponent = 2.0f;
 };

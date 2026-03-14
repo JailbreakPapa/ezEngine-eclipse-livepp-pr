@@ -99,6 +99,13 @@ void ezVirtualShadowPageTable::ClearDirtyFlag(ezUInt32 uiLevel, ezUInt32 uiPageX
   m_Pages[idx].m_bDirty = false;
 }
 
+void ezVirtualShadowPageTable::SetWrapOffset(ezUInt32 uiLevel, ezUInt32 uiPageX, ezUInt32 uiPageY, ezInt32 iWrapX, ezInt32 iWrapY)
+{
+  const ezUInt32 idx = GetFlatIndex(uiLevel, uiPageX, uiPageY);
+  m_Pages[idx].m_iWrapOffsetX = iWrapX;
+  m_Pages[idx].m_iWrapOffsetY = iWrapY;
+}
+
 const ezVirtualShadowPageTable::PageInfo& ezVirtualShadowPageTable::GetPageInfo(ezUInt32 uiLevel, ezUInt32 uiPageX, ezUInt32 uiPageY) const
 {
   return m_Pages[GetFlatIndex(uiLevel, uiPageX, uiPageY)];

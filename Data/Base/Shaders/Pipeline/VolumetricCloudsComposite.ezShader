@@ -23,16 +23,14 @@ CullMode = CullMode_None
 // Current frame cloud render (quarter resolution)
 Texture2D<float4> CurrentCloudTexture;
 
-// Previous frame's cloud-only result (full resolution, inscatter RGB + transmittance A)
+// Previous frame's cloud-only result (quarter resolution, inscatter RGB + transmittance A)
 Texture2D<float4> HistoryCloudTexture;
 
-Texture2DArray SceneDepth;
 Texture2DArray SceneColor;
 
 struct PS_OUT
 {
   float4 SceneComposite : SV_Target0; // Final composited scene color
-  float4 CloudHistory : SV_Target1;   // Cloud-only data for next frame's temporal reprojection
 };
 
 PS_OUT main(PS_IN Input)
@@ -49,14 +47,19 @@ PS_OUT main(PS_IN Input)
   // Sample current frame at quarter res (bilinear upscale)
   float4 currentCloud = CurrentCloudTexture.SampleLevel(LinearClampSampler, uv, 0);
 
-  // Reproject for temporal accumulation
-  float depthFromZBuffer = SceneDepth.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0.0).r;
-
+  // Reproject using a point in the cloud layer along the view ray
+  // Using scene depth is wrong for sky pixels (sends reprojection to infinity).
+  // Instead, pick the cloud layer midpoint along each ray.
   float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
-  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depthFromZBuffer, 1.0));
-  float3 worldPos = worldPosH.xyz / worldPosH.w;
+  float4 worldFarH = mul(GetScreenToWorldMatrix(), float4(clipXY, 0.5, 1.0));
+  float3 rayDir = normalize(worldFarH.xyz / worldFarH.w - GetCameraPosition());
 
-  float4 prevClip = mul(PrevWorldToClipMatrix, float4(worldPos, 1.0));
+  float midAltitude = (CloudLayerBottomAltitude + CloudLayerTopAltitude) * 0.5;
+  float t = (abs(rayDir.z) > 0.001) ? ((midAltitude - GetCameraPosition().z) / rayDir.z) : 1000.0;
+  t = max(t, 0.0);
+  float3 cloudWorldPos = GetCameraPosition() + rayDir * t;
+
+  float4 prevClip = mul(PrevWorldToClipMatrix, float4(cloudWorldPos, 1.0));
   float2 prevUV = (prevClip.xy / prevClip.w) * float2(0.5, -0.5) + 0.5;
 
   float4 history = HistoryCloudTexture.SampleLevel(LinearClampSampler, prevUV, 0);
@@ -68,6 +71,23 @@ PS_OUT main(PS_IN Input)
     blend = 1.0;
   }
 
+  // Neighborhood clamping to reduce ghosting
+  float4 cMin = currentCloud;
+  float4 cMax = currentCloud;
+  float2 texelSize = 1.0 / CloudTextureSize;
+  [unroll]
+  for (int dy = -1; dy <= 1; dy++)
+  {
+    [unroll]
+    for (int dx = -1; dx <= 1; dx++)
+    {
+      float4 neighbor = CurrentCloudTexture.SampleLevel(PointClampSampler, uv + float2(dx, dy) * texelSize, 0);
+      cMin = min(cMin, neighbor);
+      cMax = max(cMax, neighbor);
+    }
+  }
+  history = clamp(history, cMin, cMax);
+
   float4 cloud = lerp(history, currentCloud, blend);
 
   // Composite: scene * transmittance + inscatter
@@ -75,6 +95,5 @@ PS_OUT main(PS_IN Input)
 
   PS_OUT output;
   output.SceneComposite = float4(result, sceneColor.a);
-  output.CloudHistory = cloud;
   return output;
 }

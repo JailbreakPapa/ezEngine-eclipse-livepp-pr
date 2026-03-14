@@ -21,4 +21,6 @@ struct ezMaterialData
   float subsurfaceScatterPower;
   float subsurfaceShadowFalloff;
   uint subsurfaceProfileIndex; // 0=skin, 1=wax, 2=jade, 3=milk
+
+  float3 tangentDirection;
 };

@@ -10,6 +10,8 @@
 #include <RendererFoundation/Resources/RenderTargetView.h>
 #include <RendererFoundation/Resources/Texture.h>
 
+#include <Foundation/Configuration/CVar.h>
+
 // clang-format off
 EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezDeferredLightingPass, 1, ezRTTIDefaultAllocator<ezDeferredLightingPass>)
 {
@@ -123,6 +125,17 @@ void ezDeferredLightingPass::Execute(const ezRenderViewContext& renderViewContex
   if (inputs[m_PinSSAO.m_uiInputIndex])
   {
     bindGroupRenderPass.BindTexture("SSAOTexture", inputs[m_PinSSAO.m_uiInputIndex]->m_TextureHandle);
+  }
+
+  // Set shadow quality permutation
+  {
+    extern ezCVarInt cvar_RenderingShadowsQuality;
+    if (cvar_RenderingShadowsQuality == 0)
+      renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_LOW");
+    else if (cvar_RenderingShadowsQuality >= 2)
+      renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_HIGH");
+    else
+      renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_MEDIUM");
   }
 
   renderViewContext.m_pRenderContext->BindShader(m_hShader);

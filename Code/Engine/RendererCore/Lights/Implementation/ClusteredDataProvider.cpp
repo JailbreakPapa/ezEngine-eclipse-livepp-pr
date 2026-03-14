@@ -49,6 +49,15 @@ ezClusteredDataGPU::ezClusteredDataGPU()
     }
 
     {
+      desc.m_uiStructSize = sizeof(ezPerFogVolumeData);
+      desc.m_uiTotalSize = desc.m_uiStructSize * 64; // up to 64 fog volumes
+      desc.m_BufferFlags = ezGALBufferUsageFlags::StructuredBuffer | ezGALBufferUsageFlags::ShaderResource;
+      desc.m_ResourceAccess.m_bImmutable = false;
+
+      m_hFogVolumeDataBuffer = pDevice->CreateBuffer(desc);
+    }
+
+    {
       desc.m_uiStructSize = sizeof(ezPerClusterData);
       desc.m_uiTotalSize = desc.m_uiStructSize * NUM_CLUSTERS;
 
@@ -90,6 +99,7 @@ ezClusteredDataGPU::~ezClusteredDataGPU()
   pDevice->DestroyBuffer(m_hLightDataBuffer);
   pDevice->DestroyBuffer(m_hDecalDataBuffer);
   pDevice->DestroyBuffer(m_hReflectionProbeDataBuffer);
+  pDevice->DestroyBuffer(m_hFogVolumeDataBuffer);
   pDevice->DestroyBuffer(m_hClusterDataBuffer);
   pDevice->DestroyBuffer(m_hClusterItemBuffer);
   pDevice->DestroySamplerState(m_hShadowSampler);
@@ -107,6 +117,7 @@ void ezClusteredDataGPU::BindResources(ezRenderContext* pRenderContext)
   bindGroup.BindBuffer("perDecalDataBuffer", m_hDecalDataBuffer);
   bindGroup.BindBuffer("perDecalAtlasDataBuffer", ezDecalManager::GetDecalAtlasDataBufferForRendering());
   bindGroup.BindBuffer("perPerReflectionProbeDataBuffer", m_hReflectionProbeDataBuffer);
+  bindGroup.BindBuffer("perFogVolumeDataBuffer", m_hFogVolumeDataBuffer);
   bindGroup.BindBuffer("perClusterDataBuffer", m_hClusterDataBuffer);
   bindGroup.BindBuffer("clusterItemBuffer", m_hClusterItemBuffer);
 
@@ -176,6 +187,11 @@ void* ezClusteredDataProvider::UpdateData(const ezRenderViewContext& renderViewC
         pGALCommandEncoder->UpdateBuffer(m_Data.m_hReflectionProbeDataBuffer, 0, pData->m_ReflectionProbeData.ToByteArray(), ezGALUpdateMode::AheadOfTime);
       }
 
+      if (!pData->m_FogVolumeData.IsEmpty())
+      {
+        pGALCommandEncoder->UpdateBuffer(m_Data.m_hFogVolumeDataBuffer, 0, pData->m_FogVolumeData.ToByteArray(), ezGALUpdateMode::AheadOfTime);
+      }
+
       if (m_Data.m_hClusterItemBuffer.IsInvalidated() == false)
       {
         auto& bufferDesc = pGALCommandEncoder->GetDevice().GetBuffer(m_Data.m_hClusterItemBuffer)->GetDescription();
@@ -226,6 +242,17 @@ void* ezClusteredDataProvider::UpdateData(const ezRenderViewContext& renderViewC
 
     pConstants->VolumetricFogEnabled = pData->m_bVolumetricFogEnabled ? 1u : 0u;
     pConstants->VSMEnabled = pData->m_bVSMEnabled ? 1u : 0u;
+    pConstants->NumFogVolumes = pData->m_FogVolumeData.GetCount();
+    pConstants->ClusteredPadding0 = 0;
+
+    // Store fog volume params for use by VolumetricFogPass
+    m_Data.m_uiNumFogVolumes = pData->m_FogVolumeData.GetCount();
+    if (!pData->m_FogVolumeParams.IsEmpty())
+    {
+      m_Data.m_fFogNearPlane = pData->m_FogVolumeParams[0].m_fNearPlane;
+      m_Data.m_fFogFarPlane = pData->m_FogVolumeParams[0].m_fFarPlane;
+      m_Data.m_fFogTemporalBlendWeight = pData->m_FogVolumeParams[0].m_fTemporalBlendWeight;
+    }
   }
 
   return &m_Data;

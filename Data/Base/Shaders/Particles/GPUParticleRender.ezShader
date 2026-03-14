@@ -1,0 +1,137 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+PARTICLE_RENDER_MODE
+CAMERA_MODE
+SHADING_QUALITY
+
+[RENDERSTATE]
+#include <Shaders/Particles/ParticleRenderState.h>
+
+[VERTEXSHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "GPUParticleConstants.h"
+
+struct ezGPUParticle
+{
+  float3 Position;
+  float Size;
+  float3 Velocity;
+  float Life;
+  float MaxLife;
+  float RotationOffset;
+  float RotationSpeed;
+  uint Flags;
+  uint Color0;
+  uint Color1;
+  float InitialSize;
+  uint Padding0;
+};
+
+StructuredBuffer<ezGPUParticle> gpuParticlesRead BIND_GROUP(BG_DRAW_CALL);
+
+static float2 QuadTexCoords[6] =
+{
+  float2(1.0, 0.0),
+  float2(1.0, 1.0),
+  float2(0.0, 1.0),
+  float2(1.0, 0.0),
+  float2(0.0, 1.0),
+  float2(0.0, 0.0),
+};
+
+static float2 QuadOffsets[6] =
+{
+  float2(-0.5, 0.5),
+  float2(-0.5, -0.5),
+  float2(0.5, -0.5),
+  float2(-0.5, 0.5),
+  float2(0.5, -0.5),
+  float2(0.5, 0.5),
+};
+
+struct VS_OUT
+{
+  float4 Position : SV_Position;
+  float2 TexCoord0 : TEXCOORD0;
+  float4 Color0 : COLOR0;
+};
+
+VS_OUT main(uint VertexID : SV_VertexID)
+{
+  VS_OUT ret;
+
+  uint dataIndex = VertexID / 6;
+  uint vertexIndex = VertexID % 6;
+
+  ezGPUParticle p = gpuParticlesRead[dataIndex];
+
+  // Dead particles: degenerate triangle
+  if ((p.Flags & 1u) == 0 || p.Life <= 0.0)
+  {
+    ret.Position = float4(0, 0, 0, 0);
+    ret.TexCoord0 = float2(0, 0);
+    ret.Color0 = float4(0, 0, 0, 0);
+    return ret;
+  }
+
+  float size = p.Size;
+  float3 worldPos = p.Position;
+
+  // Billboard: expand quad using camera right/up from the view matrix
+  float3 cameraRight = float3(GetWorldToCameraMatrix()._11, GetWorldToCameraMatrix()._21, GetWorldToCameraMatrix()._31);
+  float3 cameraUp = float3(GetWorldToCameraMatrix()._12, GetWorldToCameraMatrix()._22, GetWorldToCameraMatrix()._32);
+
+  // Apply rotation
+  float rotAngle = p.RotationOffset;
+  float cosA = cos(rotAngle);
+  float sinA = sin(rotAngle);
+  float2 offset = QuadOffsets[vertexIndex];
+  float2 rotatedOffset = float2(
+    offset.x * cosA - offset.y * sinA,
+    offset.x * sinA + offset.y * cosA
+  );
+
+  float3 vertexWorld = worldPos + (cameraRight * rotatedOffset.x + cameraUp * rotatedOffset.y) * size;
+
+  ret.Position = mul(GetWorldToScreenMatrix(), float4(vertexWorld, 1.0));
+  ret.TexCoord0 = QuadTexCoords[vertexIndex];
+
+  // Unpack color (RGBA16F stored as two uint32)
+  float4 color;
+  color.r = f16tof32(p.Color0);
+  color.g = f16tof32(p.Color0 >> 16);
+  color.b = f16tof32(p.Color1);
+  color.a = f16tof32(p.Color1 >> 16);
+  ret.Color0 = color;
+
+  return ret;
+}
+
+[PIXELSHADER]
+
+#include <Shaders/Common/Common.h>
+
+Texture2D ParticleTexture BIND_GROUP(BG_DRAW_CALL);
+SamplerState ParticleTexture_AutoSampler BIND_GROUP(BG_DRAW_CALL);
+
+struct PS_IN
+{
+  float4 Position : SV_Position;
+  float2 TexCoord0 : TEXCOORD0;
+  float4 Color0 : COLOR0;
+};
+
+float4 main(PS_IN input) : SV_Target
+{
+  float4 texColor = ParticleTexture.Sample(ParticleTexture_AutoSampler, input.TexCoord0);
+  float4 finalColor = texColor * input.Color0;
+
+  if (finalColor.a < 0.01)
+    discard;
+
+  return finalColor;
+}

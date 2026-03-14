@@ -18,6 +18,7 @@ public:
   float m_fIntensity;
   float m_fSpecularMultiplier;
   ezUInt32 m_uiShadowDataOffsetAndFadeOut;
+  float m_fPenumbraSize = 0.0f;
 };
 
 /// \brief Base class for dynamic light components.

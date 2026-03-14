@@ -1,0 +1,50 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[RENDERSTATE]
+DepthTest = false
+DepthWrite = false
+CullMode = CullMode_None
+
+[VERTEXSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleVertexShader.h>
+
+[PIXELSHADER]
+
+#include <Shaders/Pipeline/FullscreenTriangleInterpolator.h>
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include "GodRaysConstants.h"
+
+Texture2DArray SceneColor;
+Texture2D<float4> GodRaysTexture;
+
+struct PS_OUT
+{
+  float4 Color : SV_Target0;
+};
+
+PS_OUT main(PS_IN Input)
+{
+  #if CAMERA_MODE == CAMERA_MODE_STEREO
+    s_ActiveCameraEyeIndex = Input.RenderTargetArrayIndex;
+  #endif
+
+  float2 uv = Input.TexCoord0.xy;
+
+  float4 sceneColor = SceneColor.SampleLevel(PointClampSampler, float3(uv, s_ActiveCameraEyeIndex), 0);
+
+  // Sample god rays at half resolution (bilinear upscale)
+  float4 godRays = GodRaysTexture.SampleLevel(LinearClampSampler, uv, 0);
+
+  // Additive composite
+  float3 result = sceneColor.rgb + godRays.rgb * GodRaysIntensity;
+
+  PS_OUT output;
+  output.Color = float4(result, sceneColor.a);
+  return output;
+}

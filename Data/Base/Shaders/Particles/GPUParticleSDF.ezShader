@@ -1,0 +1,45 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/CameraConstantsAccess.h>
+#include "GPUParticleConstants.h"
+
+Texture2D<float> SceneDepth;
+RWTexture3D<float> SDFTexture;
+
+[numthreads(GPU_PARTICLE_SDF_THREAD_GROUP_SIZE, GPU_PARTICLE_SDF_THREAD_GROUP_SIZE, GPU_PARTICLE_SDF_THREAD_GROUP_SIZE)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  if (any(DTid >= GPUPartSDFResolution))
+    return;
+
+  // Compute world position for this voxel
+  float3 uvw = (float3(DTid) + 0.5) / float(GPUPartSDFResolution);
+  float3 worldPos = lerp(GPUPartSDFWorldMin, GPUPartSDFWorldMax, uvw);
+
+  // Project to screen
+  float4 clipPos = mul(GPUPartViewProjectionMatrix, float4(worldPos, 1.0));
+  float2 ndc = clipPos.xy / clipPos.w;
+  float2 uv = ndc * float2(0.5, -0.5) + 0.5;
+
+  float signedDist = 1000.0;
+
+  if (all(uv >= 0) && all(uv <= 1))
+  {
+    int2 texCoord = int2(uv * float2(GPUPartDepthBufferWidth, GPUPartDepthBufferHeight));
+    float sceneDepthRaw = SceneDepth.Load(int3(texCoord, 0));
+    float linearSceneDepth = LinearizeZBufferDepth(sceneDepthRaw);
+    float linearVoxelDepth = clipPos.w;
+
+    signedDist = linearSceneDepth - linearVoxelDepth;
+  }
+
+  SDFTexture[DTid] = signedDist;
+}

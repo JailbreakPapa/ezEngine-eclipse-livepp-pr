@@ -1,0 +1,83 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+SHADING_QUALITY = SHADING_QUALITY_NORMAL
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/LightData.h>
+#include "GodRaysConstants.h"
+
+Texture2D<float> OcclusionInput;
+RWTexture2D<float4> GodRaysOutput;
+
+[numthreads(GODRAYS_THREAD_GROUP_X, GODRAYS_THREAD_GROUP_Y, 1)]
+void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+  if (dispatchThreadId.x >= GodRaysResolutionX || dispatchThreadId.y >= GodRaysResolutionY)
+    return;
+
+  // Get the sun direction and project to screen space
+  ezPerLightData sunLight = GetBrightestDirectionalLightData();
+  float3 sunDir = GetLightDirection(sunLight);
+  float3 sunColor = GetLightColor(sunLight) * sunLight.intensity;
+
+  // Project a far-away point along the sun direction to get screen position
+  float3 cameraPos = GetCameraPosition();
+  float3 sunWorldPos = cameraPos + sunDir * 10000.0;
+  float4 sunClipPos = mul(GetWorldToScreenMatrix(), float4(sunWorldPos, 1.0));
+  float2 sunScreenUV = (sunClipPos.xy / sunClipPos.w) * float2(0.5, -0.5) + 0.5;
+
+  // Check if the light is roughly on screen (with margin for off-screen fade)
+  float onScreenFade = 1.0;
+  float2 sunClamped = saturate(sunScreenUV);
+  float2 distFromScreen = abs(sunScreenUV - sunClamped);
+  float maxDist = max(distFromScreen.x, distFromScreen.y);
+  onScreenFade = saturate(1.0 - maxDist * 2.0);
+
+  // If the sun is behind the camera, no god rays
+  if (sunClipPos.w < 0.0)
+  {
+    GodRaysOutput[dispatchThreadId.xy] = float4(0, 0, 0, 0);
+    return;
+  }
+
+  float2 uv = (float2(dispatchThreadId.xy) + 0.5) / float2(GodRaysResolutionX, GodRaysResolutionY);
+
+  // Direction from pixel toward light source
+  float2 deltaTexCoord = (uv - sunScreenUV);
+  float rayLength = length(deltaTexCoord);
+  float maxRayLen = GodRaysMaxRayLength;
+
+  // Clamp ray length and adjust step
+  float effectiveLength = min(rayLength, maxRayLen);
+  deltaTexCoord = normalize(deltaTexCoord) * effectiveLength;
+  deltaTexCoord *= GodRaysDensity / float(GodRaysNumSamples);
+
+  // March from pixel toward the sun, accumulating unoccluded light
+  float2 sampleCoord = uv;
+  float illumination = 0.0;
+  float decayAccum = 1.0;
+
+  [loop]
+  for (uint i = 0; i < GodRaysNumSamples; i++)
+  {
+    sampleCoord -= deltaTexCoord;
+
+    // Clamp to a valid region
+    float2 clampedCoord = saturate(sampleCoord);
+
+    float occlusionSample = OcclusionInput.SampleLevel(LinearClampSampler, clampedCoord, 0);
+
+    illumination += occlusionSample * decayAccum * GodRaysWeight;
+    decayAccum *= GodRaysDecay;
+  }
+
+  illumination *= GodRaysExposure * onScreenFade;
+
+  GodRaysOutput[dispatchThreadId.xy] = float4(sunColor * illumination, illumination);
+}

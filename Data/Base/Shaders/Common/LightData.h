@@ -134,6 +134,29 @@ struct ezPerDecalAtlasData
   static_assert(sizeof(ezPerDecalAtlasData) == 8);
 #endif
 
+// Per-volume fog data for the structured buffer
+struct EZ_SHADER_STRUCT ezPerFogVolumeData
+{
+  TRANSFORM(WorldToVolumeMatrix); // world-to-local OBB transform (includes scale from half-extents)
+
+  FLOAT3(Albedo);
+  FLOAT1(Density);
+
+  FLOAT3(AmbientLight);
+  FLOAT1(Anisotropy);
+
+  FLOAT1(HeightFalloff);
+  FLOAT1(BaseHeight);     // world Z of the volume center
+  FLOAT1(FalloffExponent); // edge falloff exponent
+  FLOAT1(Padding);
+};
+
+#if EZ_ENABLED(PLATFORM_SHADER)
+  StructuredBuffer<ezPerFogVolumeData> perFogVolumeDataBuffer;
+#else // C++
+  static_assert(sizeof(ezPerFogVolumeData) == 96);
+#endif
+
 #define REFLECTION_PROBE_IS_SPHERE (1 << 31)
 #define REFLECTION_PROBE_IS_PROJECTED (1 << 30)
 #define REFLECTION_PROBE_INDEX_BITMASK 0x3FFFFFFF
@@ -182,6 +205,9 @@ struct ezPerDecalAtlasData
 
     UINT1(VolumetricFogEnabled);
     UINT1(VSMEnabled);
+
+    UINT1(NumFogVolumes);
+    UINT1(ClusteredPadding0);
 };
 
 #define NUM_CLUSTERS_X 16

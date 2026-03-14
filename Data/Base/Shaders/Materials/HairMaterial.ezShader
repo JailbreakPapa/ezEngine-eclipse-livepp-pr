@@ -1,0 +1,230 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+
+BLEND_MODE
+RENDER_PASS
+SHADING_MODE
+TWO_SIDED = TRUE
+FLIP_WINDING
+FORWARD_PASS_WRITE_DEPTH
+MSAA
+CAMERA_MODE
+SHADING_QUALITY
+SHADOW_QUALITY
+VERTEX_SKINNING
+
+[MATERIALPARAMETER]
+
+Permutation BLEND_MODE;
+Permutation SHADING_MODE;
+
+Color HairColor @Default(Color(0.3, 0.15, 0.05));
+Color ScatterColor @Default(Color(0.5, 0.3, 0.1));
+
+bool UseHairColorTexture;
+Texture2D HairColorTexture;
+
+bool UseFlowMap;
+Texture2D HairFlowMap;
+
+bool UseOpacityMap;
+Texture2D OpacityMap;
+
+bool UseAOMap;
+Texture2D AOMap;
+
+Texture2D DitherNoiseTexture @Default("{ ac614d7c-2b31-4a7b-aa0c-c5d8200b7b89 }");
+
+float PrimaryShift @Default(-0.1) @Clamp(-0.5, 0.5);
+float SecondaryShift @Default(0.1) @Clamp(-0.5, 0.5);
+float PrimaryRoughness @Default(0.1) @Clamp(0.01, 1.0);
+float SecondaryRoughness @Default(0.3) @Clamp(0.01, 1.0);
+float TransmissionRoughness @Default(0.15) @Clamp(0.01, 1.0);
+float SpecularIntensity @Default(1.0) @Clamp(0.0, 5.0);
+float MaskThreshold @Default(0.3) @Clamp(0.0, 1.0);
+float WindInfluenceScale @Default(1.0) @Clamp(0.0, 5.0);
+
+[MATERIALCONFIG]
+
+#include <Shaders/Materials/MaterialConfig.h>
+
+[RENDERSTATE]
+
+#include <Shaders/Materials/MaterialState.h>
+
+[MATERIALCONSTANTS]
+
+COLOR4F(HairColor);
+COLOR4F(ScatterColor);
+BOOL1(UseHairColorTexture);
+BOOL1(UseFlowMap);
+BOOL1(UseOpacityMap);
+BOOL1(UseAOMap);
+FLOAT1(PrimaryShift);
+FLOAT1(SecondaryShift);
+FLOAT1(PrimaryRoughness);
+FLOAT1(SecondaryRoughness);
+FLOAT1(TransmissionRoughness);
+FLOAT1(SpecularIntensity);
+FLOAT1(MaskThreshold);
+FLOAT1(WindInfluenceScale);
+
+[VERTEXSHADER]
+
+#define USE_NORMAL
+#define USE_TANGENT
+#define USE_TEXCOORD0
+#define USE_WORLD_POSITION_OFFSET
+
+#if VERTEX_SKINNING
+  #define USE_SKINNING
+#endif
+
+#if RENDER_PASS == RENDER_PASS_EDITOR
+  #define USE_DEBUG_INTERPOLATOR
+#endif
+
+#include <Shaders/Materials/MaterialVertexShader.h>
+
+float3 GetWorldPositionOffset(ezPerInstanceData data, float3 worldPosition)
+{
+  float windInfluence = data.CustomData.x * GetMaterialData(WindInfluenceScale);
+  if (windInfluence <= 0.0)
+    return float3(0, 0, 0);
+
+  float time = GlobalTime;
+
+  // Simple wind displacement for hair strands
+  float wind1 = sin(time * 2.0 + worldPosition.x * 0.3 + worldPosition.z * 0.5) * windInfluence * 0.05;
+  float wind2 = cos(time * 1.5 + worldPosition.y * 0.4) * windInfluence * 0.03;
+
+  // Gravity droop from CustomData.y
+  float gravity = -data.CustomData.y * 0.01;
+
+  return float3(wind1, wind2, gravity);
+}
+
+VS_OUT main(VS_IN Input)
+{
+  return FillVertexData(Input);
+}
+
+[PIXELSHADER]
+
+#define USE_NORMAL
+#define USE_TANGENT
+#define USE_TEXCOORD0
+#define USE_HAIR_SHADING
+#define USE_MATERIAL_OCCLUSION
+#define USE_TWO_SIDED_LIGHTING
+#define USE_FOG
+#define USE_DECALS
+#define USE_CUSTOM_DITHER_NOISE
+#define USE_FINALIZE_MATERIAL
+
+#if RENDER_PASS == RENDER_PASS_EDITOR
+  #define USE_DEBUG_INTERPOLATOR
+#endif
+
+#include <Shaders/Materials/MaterialPixelShader.h>
+
+Texture2D HairColorTexture BIND_GROUP(BG_MATERIAL);
+SamplerState HairColorTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D HairFlowMap BIND_GROUP(BG_MATERIAL);
+SamplerState HairFlowMap_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D OpacityMap BIND_GROUP(BG_MATERIAL);
+SamplerState OpacityMap_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D AOMap BIND_GROUP(BG_MATERIAL);
+SamplerState AOMap_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D DitherNoiseTexture BIND_GROUP(BG_MATERIAL);
+
+float3 GetNormal()
+{
+  return G.Input.Normal;
+}
+
+float3 GetDiffuseColor()
+{
+  float3 hairColor = GetMaterialData(HairColor).rgb * GetInstanceData().Color.rgb;
+
+  [branch]
+  if (GetMaterialData(UseHairColorTexture))
+  {
+    hairColor *= HairColorTexture.Sample(HairColorTexture_AutoSampler, G.Input.TexCoord0.xy).rgb;
+  }
+
+  return hairColor;
+}
+
+float3 GetSpecularColor()
+{
+  return GetMaterialData(ScatterColor).rgb * GetMaterialData(SpecularIntensity);
+}
+
+float GetRoughness()
+{
+  return GetMaterialData(PrimaryRoughness);
+}
+
+float GetOpacity()
+{
+  float opacity = GetMaterialData(HairColor).a * GetInstanceData().Color.a;
+
+  [branch]
+  if (GetMaterialData(UseOpacityMap))
+  {
+    opacity *= OpacityMap.Sample(OpacityMap_AutoSampler, G.Input.TexCoord0.xy).a;
+  }
+
+  return opacity - GetMaterialData(MaskThreshold);
+}
+
+float GetOcclusion()
+{
+  [branch]
+  if (GetMaterialData(UseAOMap))
+  {
+    return AOMap.Sample(AOMap_AutoSampler, G.Input.TexCoord0.xy).r;
+  }
+
+  return 1.0;
+}
+
+float4 GetDitherNoise(float2 pixelCoord)
+{
+  uint2 noiseTextureSize;
+  DitherNoiseTexture.GetDimensions(noiseTextureSize.x, noiseTextureSize.y);
+
+  return DitherNoiseTexture.SampleLevel(PointSampler, pixelCoord / noiseTextureSize, 0);
+}
+
+void FinalizeMaterial(inout ezMaterialData matData)
+{
+  // Store the tangent direction for the Marschner BSDF.
+  // If a flow map is provided, read tangent from it; otherwise use the vertex tangent.
+  [branch]
+  if (GetMaterialData(UseFlowMap))
+  {
+    float2 flowDir = HairFlowMap.Sample(HairFlowMap_AutoSampler, G.Input.TexCoord0.xy).rg * 2.0 - 1.0;
+    float3 tangentTS = normalize(float3(flowDir, 0.0));
+    matData.tangentDirection = normalize(tangentTS.x * G.Input.Tangent + tangentTS.y * G.Input.BiTangent);
+  }
+  else
+  {
+    matData.tangentDirection = normalize(G.Input.Tangent);
+  }
+
+  // Apply per-lobe shift values from material parameters into the HairBRDF
+  // The HairBRDF uses fixed shifts internally; we override them here through the tangent
+  // by pre-shifting:
+  // (The actual per-lobe shifts are handled in HairBRDF.h using fixed values.
+  //  Material-level PrimaryShift/SecondaryShift are applied here as a global tangent offset.)
+  float avgShift = (GetMaterialData(PrimaryShift) + GetMaterialData(SecondaryShift)) * 0.5;
+  matData.tangentDirection = normalize(matData.tangentDirection + avgShift * matData.worldNormal);
+}

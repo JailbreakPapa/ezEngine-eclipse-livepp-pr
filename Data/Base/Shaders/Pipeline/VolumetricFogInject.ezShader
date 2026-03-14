@@ -15,6 +15,25 @@ SHADING_QUALITY = SHADING_QUALITY_NORMAL
 
 RWTexture3D<float4> FroxelGrid;
 
+// Test a world position against an OBB defined by WorldToVolumeMatrix.
+// Returns 0 if outside, otherwise a smooth falloff weight in (0, 1].
+float EvaluateFogVolume(float3 worldPos, ezPerFogVolumeData vol)
+{
+  // Transform to volume local space [-1, 1]
+  float4x4 mat = TransformToMatrix(vol.WorldToVolumeMatrix);
+  float3 localPos = mul(mat, float4(worldPos, 1.0)).xyz;
+
+  // Check if inside the [-1, 1] box
+  float3 absLocal = abs(localPos);
+  if (any(absLocal > 1.0))
+    return 0.0;
+
+  // Smooth edge falloff: 1 at center, 0 at boundary
+  float3 edgeDist = saturate(1.0 - absLocal);
+  float falloff = edgeDist.x * edgeDist.y * edgeDist.z;
+  return pow(falloff, vol.FalloffExponent);
+}
+
 [numthreads(VOLUMETRIC_FOG_THREAD_GROUP_X, VOLUMETRIC_FOG_THREAD_GROUP_Y, VOLUMETRIC_FOG_THREAD_GROUP_Z)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
@@ -39,62 +58,75 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float3 viewDir = normalize(worldPosH.xyz / worldPosH.w - GetCameraPosition());
     float3 worldPosition = GetCameraPosition() + viewDir * linearDepth;
 
-    // Compute fog density at this position
-    float density = FogDensityScale;
-    density *= HeightDensity(worldPosition.z, FogBaseHeight, FogHeightDensityFalloff);
+    // Accumulate fog density and scattering from all fog volumes
+    float totalDensity = 0.0;
+    float3 totalInScattered = float3(0, 0, 0);
 
-    // Skip very low density froxels
-    if (density < 0.0001)
+    for (uint v = 0; v < NumFogVolumes; ++v)
     {
-      FroxelGrid[froxelCoord] = float4(0, 0, 0, 0);
-      continue;
-    }
+      ezPerFogVolumeData vol = perFogVolumeDataBuffer[v];
 
-    // Accumulate in-scattered light from all lights
-    float3 inScattered = AmbientLight * FogAlbedo * density;
-
-    for (uint i = 0; i < NumLights; ++i)
-    {
-      ezPerLightData lightData = perLightDataBuffer[i];
-      uint type = GetLightType(lightData);
-
-      float3 lightColor = GetLightColor(lightData) * lightData.intensity;
-      float3 lightDir = GetLightDirection(lightData);
-      float attenuation = 1.0;
-
-      if (type == LIGHT_TYPE_POINT || type == LIGHT_TYPE_SPOT)
-      {
-        float3 lightVec = lightData.position - worldPosition;
-        float sqrDist = dot(lightVec, lightVec);
-        attenuation = (1.0 / max(sqrDist, 0.01 * 0.01));
-        float factor = sqrDist * lightData.invSqrAttRadius;
-        float smoothFactor = saturate(1.0 - factor * factor);
-        attenuation *= smoothFactor * smoothFactor;
-
-        lightVec *= rsqrt(sqrDist);
-
-        if (type == LIGHT_TYPE_SPOT)
-        {
-          float2 spotParams = RG16FToFloat2(lightData.spotOrFillParams);
-          float cosAngle = dot(lightDir, lightVec);
-          float spotAtten = saturate(cosAngle * spotParams.x + spotParams.y);
-          attenuation *= spotAtten * spotAtten;
-        }
-
-        lightDir = lightVec;
-      }
-
-      if (attenuation < 0.0001)
+      float volumeWeight = EvaluateFogVolume(worldPosition, vol);
+      if (volumeWeight < 0.0001)
         continue;
 
-      // Phase function
-      float cosTheta = dot(normalize(viewDir), lightDir);
-      float phase = HenyeyGreensteinDualLobe(cosTheta, FogAnisotropy);
+      float density = vol.Density * volumeWeight;
+      density *= HeightDensity(worldPosition.z, vol.BaseHeight, vol.HeightFalloff);
 
-      inScattered += lightColor * FogAlbedo * density * attenuation * phase;
+      if (density < 0.0001)
+        continue;
+
+      totalDensity += density;
+
+      // Ambient contribution for this volume
+      float3 volumeInScatter = vol.AmbientLight * vol.Albedo * density;
+
+      // Light scattering for this volume
+      for (uint i = 0; i < NumLights; ++i)
+      {
+        ezPerLightData lightData = perLightDataBuffer[i];
+        uint type = GetLightType(lightData);
+
+        float3 lightColor = GetLightColor(lightData) * lightData.intensity;
+        float3 lightDir = GetLightDirection(lightData);
+        float attenuation = 1.0;
+
+        if (type == LIGHT_TYPE_POINT || type == LIGHT_TYPE_SPOT)
+        {
+          float3 lightVec = lightData.position - worldPosition;
+          float sqrDist = dot(lightVec, lightVec);
+          attenuation = (1.0 / max(sqrDist, 0.01 * 0.01));
+          float factor = sqrDist * lightData.invSqrAttRadius;
+          float smoothFactor = saturate(1.0 - factor * factor);
+          attenuation *= smoothFactor * smoothFactor;
+
+          lightVec *= rsqrt(sqrDist);
+
+          if (type == LIGHT_TYPE_SPOT)
+          {
+            float2 spotParams = RG16FToFloat2(lightData.spotOrFillParams);
+            float cosAngle = dot(lightDir, lightVec);
+            float spotAtten = saturate(cosAngle * spotParams.x + spotParams.y);
+            attenuation *= spotAtten * spotAtten;
+          }
+
+          lightDir = lightVec;
+        }
+
+        if (attenuation < 0.0001)
+          continue;
+
+        // Phase function
+        float cosTheta = dot(normalize(viewDir), lightDir);
+        float phase = HenyeyGreensteinDualLobe(cosTheta, vol.Anisotropy);
+
+        volumeInScatter += lightColor * vol.Albedo * density * attenuation * phase;
+      }
+
+      totalInScattered += volumeInScatter;
     }
 
     // Store inscattered light (RGB) and density (A) for integration pass
-    FroxelGrid[froxelCoord] = float4(inScattered, density);
+    FroxelGrid[froxelCoord] = float4(totalInScattered, totalDensity);
   }
 }

@@ -12,7 +12,7 @@
 #include <RendererFoundation/Resources/Texture.h>
 
 // clang-format off
-EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezSSRPass, 1, ezRTTIDefaultAllocator<ezSSRPass>)
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezSSRPass, 2, ezRTTIDefaultAllocator<ezSSRPass>)
 {
   EZ_BEGIN_PROPERTIES
   {
@@ -24,6 +24,8 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezSSRPass, 1, ezRTTIDefaultAllocator<ezSSRPass>)
     EZ_MEMBER_PROPERTY("MaxRayDistance", m_fMaxRayDistance)->AddAttributes(new ezDefaultValueAttribute(100.0f), new ezClampValueAttribute(1.0f, 500.0f)),
     EZ_ACCESSOR_PROPERTY("RoughnessThreshold", GetRoughnessThreshold, SetRoughnessThreshold)->AddAttributes(new ezDefaultValueAttribute(0.5f), new ezClampValueAttribute(0.0f, 1.0f)),
     EZ_MEMBER_PROPERTY("TemporalBlendWeight", m_fTemporalBlendWeight)->AddAttributes(new ezDefaultValueAttribute(0.05f), new ezClampValueAttribute(0.01f, 0.5f)),
+    EZ_MEMBER_PROPERTY("EdgeFadeStart", m_fEdgeFadeStart)->AddAttributes(new ezDefaultValueAttribute(0.05f), new ezClampValueAttribute(0.01f, 0.3f)),
+    EZ_MEMBER_PROPERTY("EdgeFadeEnd", m_fEdgeFadeEnd)->AddAttributes(new ezDefaultValueAttribute(0.15f), new ezClampValueAttribute(0.01f, 0.3f)),
   }
   EZ_END_PROPERTIES;
   EZ_BEGIN_ATTRIBUTES
@@ -42,6 +44,7 @@ ezSSRPass::ezSSRPass()
   m_hClassifyShader = ezResourceManager::LoadResource<ezShaderResource>("Shaders/Pipeline/SSRClassify.ezShader");
   m_hPrepareArgsShader = ezResourceManager::LoadResource<ezShaderResource>("Shaders/Pipeline/SSRPrepareArgs.ezShader");
   m_hTraceShader = ezResourceManager::LoadResource<ezShaderResource>("Shaders/Pipeline/SSRTrace.ezShader");
+  m_hSpatialBlurShader = ezResourceManager::LoadResource<ezShaderResource>("Shaders/Pipeline/SSRSpatialBlur.ezShader");
   m_hTemporalShader = ezResourceManager::LoadResource<ezShaderResource>("Shaders/Pipeline/SSRTemporal.ezShader");
 
   m_hConstantBuffer = ezRenderContext::CreateConstantBufferStorage<ezSSRConstants>();
@@ -86,7 +89,7 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
   auto pGBuffer1Input = inputs[m_PinGBuffer1.m_uiInputIndex]; // may be null in Forward+
   auto pColorOutput = outputs[m_PinColor.m_uiOutputIndex];
 
-  if (pDepthInput == nullptr)
+  if (pDepthInput == nullptr || pColorOutput == nullptr)
     return;
 
   const bool bHasGBuffer = (pGBuffer1Input != nullptr);
@@ -105,12 +108,6 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
   ezGALTextureHandle hCurrentSSR = m_bUseResultA ? m_hSSRResultA : m_hSSRResultB;
   ezGALTextureHandle hHistorySSR = m_bUseResultA ? m_hSSRResultB : m_hSSRResultA;
 
-  // Copy current lit color to previous-frame-color history for trace reads
-  if (pColorOutput != nullptr && !m_hPrevFrameColor.IsInvalidated())
-  {
-    renderViewContext.m_pRenderContext->GetCommandEncoder()->CopyTexture(m_hPrevFrameColor, pColorOutput->m_TextureHandle);
-  }
-
   // Update constant buffer
   {
     ezSSRConstants* cb = ezRenderContext::GetConstantBufferData<ezSSRConstants>(m_hConstantBuffer);
@@ -128,7 +125,12 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
     cb->SSRHiZResolutionY = uiHeight;
     cb->SSRCurrentMipLevel = 0;
     cb->SSRHasGBuffer = bHasGBuffer ? 1 : 0;
+    cb->SSRFrameIndex = m_uiFrameIndex;
     cb->SSRPrevWorldToClipMatrix = m_PrevViewProjectionMatrix;
+    cb->SSREdgeFadeStart = m_fEdgeFadeStart;
+    cb->SSREdgeFadeEnd = m_fEdgeFadeEnd;
+    cb->SSRBlurRadius = m_fBlurRadius;
+    cb->SSRBlurSharpness = m_fBlurSharpness;
   }
 
   // ---- Sub-pass 1: Clear indirect args buffer ----
@@ -152,12 +154,20 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
       {
         auto computeScope = renderViewContext.m_pRenderContext->BeginComputeScope(renderViewContext, "SSR HiZ Mip");
 
+        ezUInt32 destWidth = ezMath::Max(mipWidth / 2, 1u);
+        ezUInt32 destHeight = ezMath::Max(mipHeight / 2, 1u);
+        if (mip == 0)
+        {
+          destWidth = mipWidth;
+          destHeight = mipHeight;
+        }
+
         // Update current mip level in constants
         {
           ezSSRConstants* cb = ezRenderContext::GetConstantBufferData<ezSSRConstants>(m_hConstantBuffer);
           cb->SSRCurrentMipLevel = mip;
-          cb->SSRHiZResolutionX = ezMath::Max(mipWidth / 2, 1u);
-          cb->SSRHiZResolutionY = ezMath::Max(mipHeight / 2, 1u);
+          cb->SSRHiZResolutionX = destWidth;
+          cb->SSRHiZResolutionY = destHeight;
         }
 
         ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
@@ -177,14 +187,6 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
         bindGroup.BindTexture("HiZDest", m_hHiZTexture, ezGALTextureRange::MakeFromMipRange(mip, 1));
 
         renderViewContext.m_pRenderContext->BindShader(m_hBuildHiZShader);
-
-        ezUInt32 destWidth = ezMath::Max(mipWidth / 2, 1u);
-        ezUInt32 destHeight = ezMath::Max(mipHeight / 2, 1u);
-        if (mip == 0)
-        {
-          destWidth = mipWidth;
-          destHeight = mipHeight;
-        }
 
         ezUInt32 dispatchX = (destWidth + SSR_HIZ_THREAD_GROUP_SIZE - 1) / SSR_HIZ_THREAD_GROUP_SIZE;
         ezUInt32 dispatchY = (destHeight + SSR_HIZ_THREAD_GROUP_SIZE - 1) / SSR_HIZ_THREAD_GROUP_SIZE;
@@ -251,7 +253,7 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
     ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
     bindGroup.BindBuffer("ezSSRConstants", m_hConstantBuffer);
     bindGroup.BindTexture("HiZTexture", m_hHiZTexture);
-    bindGroup.BindTexture("PreviousFrameColor", m_hPrevFrameColor);
+    bindGroup.BindTexture("PreviousFrameColor", pColorOutput->m_TextureHandle);
     bindGroup.BindTexture("SceneDepth", pDepthInput->m_TextureHandle);
     if (bHasGBuffer)
     {
@@ -274,39 +276,48 @@ void ezSSRPass::Execute(const ezRenderViewContext& renderViewContext, const ezAr
     }
   }
 
-  // ---- Sub-pass 6: Temporal accumulation ----
+  // ---- Sub-pass 6: Spatial pre-filter ----
   {
-    EZ_PROFILE_SCOPE("SSR Temporal");
-    auto computeScope = renderViewContext.m_pRenderContext->BeginComputeScope(renderViewContext, "SSR Temporal");
+    EZ_PROFILE_SCOPE("SSR Spatial Blur");
+    auto computeScope = renderViewContext.m_pRenderContext->BeginComputeScope(renderViewContext, "SSR Blur");
 
     ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
     bindGroup.BindBuffer("ezSSRConstants", m_hConstantBuffer);
-    bindGroup.BindTexture("SSRCurrentInput", m_hSSRTraceResult);
-    bindGroup.BindTexture("SSRHistoryInput", hHistorySSR);
+    bindGroup.BindTexture("SSRInput", m_hSSRTraceResult);
     bindGroup.BindTexture("SceneDepth", pDepthInput->m_TextureHandle);
-    bindGroup.BindTexture("SSRTemporalOutput", hCurrentSSR);
+    if (bHasGBuffer)
+    {
+      bindGroup.BindTexture("GBuffer1Texture", pGBuffer1Input->m_TextureHandle);
+    }
+    else
+    {
+      bindGroup.BindTexture("GBuffer1Texture", pDepthInput->m_TextureHandle);
+    }
+    bindGroup.BindTexture("SSRBlurOutput", m_hSSRBlurIntermediate);
 
-    renderViewContext.m_pRenderContext->BindShader(m_hTemporalShader);
+    renderViewContext.m_pRenderContext->BindShader(m_hSpatialBlurShader);
 
-    ezUInt32 dispatchX = (uiWidth + SSR_TEMPORAL_THREAD_GROUP_SIZE - 1) / SSR_TEMPORAL_THREAD_GROUP_SIZE;
-    ezUInt32 dispatchY = (uiHeight + SSR_TEMPORAL_THREAD_GROUP_SIZE - 1) / SSR_TEMPORAL_THREAD_GROUP_SIZE;
+    ezUInt32 dispatchX = (uiWidth + SSR_BLUR_THREAD_GROUP_SIZE - 1) / SSR_BLUR_THREAD_GROUP_SIZE;
+    ezUInt32 dispatchY = (uiHeight + SSR_BLUR_THREAD_GROUP_SIZE - 1) / SSR_BLUR_THREAD_GROUP_SIZE;
     renderViewContext.m_pRenderContext->Dispatch(dispatchX, dispatchY, 1).IgnoreResult();
   }
 
-  // Publish to SSRDataProvider for DeferredLighting to use next frame.
-  // After temporal, hCurrentSSR contains the blended result.
+  // Publish spatial blur result directly (no temporal accumulation).
   auto pSSRProvider = GetPipeline()->GetFrameDataProvider<ezSSRDataProvider>();
   if (pSSRProvider != nullptr)
   {
     auto pSSRData = pSSRProvider->GetData(renderViewContext);
     if (pSSRData != nullptr)
     {
-      pSSRProvider->SetSSRTexture(hCurrentSSR);
+      pSSRProvider->SetSSRTexture(m_hSSRBlurIntermediate);
     }
   }
 
   // Store current VP matrix for next-frame temporal reprojection
   m_PrevViewProjectionMatrix = renderViewContext.m_pViewData->m_ViewProjectionMatrix[0];
+
+  // Advance frame index for temporal noise jitter
+  m_uiFrameIndex++;
 
   // Swap ping-pong
   m_bUseResultA = !m_bUseResultA;
@@ -366,17 +377,7 @@ void ezSSRPass::EnsureResources(ezUInt32 uiWidth, ezUInt32 uiHeight)
     m_hSSRResultA = pDevice->CreateTexture(desc);
     m_hSSRResultB = pDevice->CreateTexture(desc);
     m_hSSRTraceResult = pDevice->CreateTexture(desc);
-  }
-
-  // Previous frame color texture
-  {
-    ezGALTextureCreationDescription desc;
-    desc.m_uiWidth = uiWidth;
-    desc.m_uiHeight = uiHeight;
-    desc.m_Format = ezGALResourceFormat::RGBAHalf;
-    desc.m_TextureFlags = ezGALTextureUsageFlags::ShaderResource;
-    desc.m_ResourceAccess.m_bImmutable = false;
-    m_hPrevFrameColor = pDevice->CreateTexture(desc);
+    m_hSSRBlurIntermediate = pDevice->CreateTexture(desc);
   }
 
   // Classify buffer (ByteAddressBuffer: max pixels * 4 bytes)
@@ -413,8 +414,8 @@ void ezSSRPass::DestroyResources()
     pDevice->DestroyTexture(m_hSSRResultB);
   if (!m_hSSRTraceResult.IsInvalidated())
     pDevice->DestroyTexture(m_hSSRTraceResult);
-  if (!m_hPrevFrameColor.IsInvalidated())
-    pDevice->DestroyTexture(m_hPrevFrameColor);
+  if (!m_hSSRBlurIntermediate.IsInvalidated())
+    pDevice->DestroyTexture(m_hSSRBlurIntermediate);
   if (!m_hClassifyBuffer.IsInvalidated())
     pDevice->DestroyBuffer(m_hClassifyBuffer);
   if (!m_hIndirectArgsBuffer.IsInvalidated())
@@ -425,7 +426,7 @@ void ezSSRPass::DestroyResources()
   m_hSSRResultA.Invalidate();
   m_hSSRResultB.Invalidate();
   m_hSSRTraceResult.Invalidate();
-  m_hPrevFrameColor.Invalidate();
+  m_hSSRBlurIntermediate.Invalidate();
   m_hClassifyBuffer.Invalidate();
   m_hIndirectArgsBuffer.Invalidate();
 
@@ -441,6 +442,8 @@ ezResult ezSSRPass::Serialize(ezStreamWriter& inout_stream) const
   inout_stream << m_fMaxRayDistance;
   inout_stream << m_fRoughnessThreshold;
   inout_stream << m_fTemporalBlendWeight;
+  inout_stream << m_fEdgeFadeStart;
+  inout_stream << m_fEdgeFadeEnd;
   return EZ_SUCCESS;
 }
 
@@ -454,6 +457,11 @@ ezResult ezSSRPass::Deserialize(ezStreamReader& inout_stream)
   inout_stream >> m_fMaxRayDistance;
   inout_stream >> m_fRoughnessThreshold;
   inout_stream >> m_fTemporalBlendWeight;
+  if (uiVersion >= 2)
+  {
+    inout_stream >> m_fEdgeFadeStart;
+    inout_stream >> m_fEdgeFadeEnd;
+  }
   return EZ_SUCCESS;
 }
 

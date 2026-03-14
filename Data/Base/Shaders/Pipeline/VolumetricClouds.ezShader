@@ -69,32 +69,34 @@ float SampleCloudDensity(float3 worldPos, float heightFraction)
   float3 windOffset = CloudWindDirection * CloudWindSpeed * WorldTime;
   float3 samplePos = worldPos + windOffset;
 
-  // Procedural weather coverage (large-scale noise on XY plane)
-  float2 weatherCoord = samplePos.xy * 0.00002;
-  float weatherNoise = ValueNoise(float3(weatherCoord, 0.0));
-  float coverage = weatherNoise * CloudCoverage;
+  // Procedural weather coverage (large-scale noise on XZ horizontal plane)
+  float2 weatherCoord = samplePos.xz * 0.0002;
+  float weatherNoise = FBM(float3(weatherCoord, 0.0), 2);
+  // Bias the weather noise to make CloudCoverage more intuitive:
+  // coverage=0.5 should produce ~50% cloud coverage
+  float coverage = saturate(weatherNoise + CloudCoverage - 0.5);
 
   // Shape noise (low frequency, 3 octaves of FBM)
-  float3 shapeCoord = samplePos * CloudShapeScale * 0.0001;
+  float3 shapeCoord = samplePos * CloudShapeScale * 0.002;
   float shapeNoiseSample = FBM(shapeCoord, 3);
 
   // Height gradient: clouds are denser in the middle of the layer
-  float heightGradient = saturate(Remap(heightFraction, 0.0, 0.2, 0.0, 1.0)) *
-                         saturate(Remap(heightFraction, 0.8, 1.0, 1.0, 0.0));
+  float heightGradient = saturate(Remap(heightFraction, 0.0, 0.15, 0.0, 1.0)) *
+                         saturate(Remap(heightFraction, 0.7, 1.0, 1.0, 0.0));
 
-  // Base cloud shape
+  // Base cloud shape: combine noise with coverage
   float baseCloud = saturate(Remap(shapeNoiseSample * heightGradient, 1.0 - coverage, 1.0, 0.0, 1.0));
 
-  if (baseCloud <= 0.0)
+  if (baseCloud <= 0.01)
     return 0.0;
 
   // Detail noise (high frequency erosion, 2 octaves)
-  float3 detailCoord = samplePos * CloudDetailScale * 0.001 - windOffset * 0.5;
+  float3 detailCoord = samplePos * CloudDetailScale * 0.008 - windOffset * 0.3;
   float detailNoiseSample = FBM(detailCoord, 2);
 
   // Erode with detail - more at edges (lower density)
   float detailModifier = lerp(detailNoiseSample, 1.0 - detailNoiseSample, saturate(heightFraction * 5.0));
-  float finalCloud = saturate(Remap(baseCloud, detailModifier * 0.2, 1.0, 0.0, 1.0));
+  float finalCloud = saturate(Remap(baseCloud, detailModifier * 0.15, 1.0, 0.0, 1.0));
 
   return finalCloud * CloudDensity;
 }
@@ -110,10 +112,11 @@ float LightMarch(float3 position, float3 lightDir)
   {
     float3 samplePos = position + lightDir * stepSize * (float(i) + 0.5);
 
-    float heightFraction = saturate((samplePos.z - CloudLayerBottomAltitude) / layerThickness);
-    if (heightFraction < 0.0 || heightFraction > 1.0)
+    float height = samplePos.z - CloudLayerBottomAltitude;
+    if (height < 0.0 || height > layerThickness)
       break;
 
+    float heightFraction = height / layerThickness;
     totalDensity += SampleCloudDensity(samplePos, heightFraction) * stepSize;
   }
 
@@ -146,26 +149,46 @@ void main(uint3 DTid : SV_DispatchThreadID)
   float linearSceneDepth = LinearizeZBufferDepth(sceneDepth);
 
   // Ray-layer intersection (horizontal layer at CloudLayerBottomAltitude to CloudLayerTopAltitude)
-  float tBottom = (CloudLayerBottomAltitude - rayOrigin.z) / rayDir.z;
-  float tTop = (CloudLayerTopAltitude - rayOrigin.z) / rayDir.z;
+  // Guard against nearly-horizontal rays where rayDir.z ≈ 0
+  float tMin, tMax;
+  bool insideLayer = (rayOrigin.z >= CloudLayerBottomAltitude && rayOrigin.z <= CloudLayerTopAltitude);
 
-  float tMin = min(tBottom, tTop);
-  float tMax = max(tBottom, tTop);
-
-  // Camera inside the cloud layer
-  if (rayOrigin.z > CloudLayerBottomAltitude && rayOrigin.z < CloudLayerTopAltitude)
+  if (abs(rayDir.z) < 0.0001)
   {
+    // Ray is nearly horizontal - only valid if camera is inside the layer
+    if (!insideLayer)
+    {
+      CloudOutput[DTid.xy] = float4(0, 0, 0, 1);
+      return;
+    }
     tMin = 0.0;
+    tMax = linearSceneDepth;
   }
-
-  // Early out: no intersection or behind geometry
-  if (tMin < 0.0 && tMax < 0.0)
+  else
   {
-    CloudOutput[DTid.xy] = float4(0, 0, 0, 1);
-    return;
+    float tBottom = (CloudLayerBottomAltitude - rayOrigin.z) / rayDir.z;
+    float tTop = (CloudLayerTopAltitude - rayOrigin.z) / rayDir.z;
+
+    tMin = min(tBottom, tTop);
+    tMax = max(tBottom, tTop);
+
+    // Camera inside the cloud layer: start from camera
+    if (insideLayer)
+    {
+      tMin = 0.0;
+    }
+
+    // Early out: no intersection or behind camera
+    if (tMax < 0.0)
+    {
+      CloudOutput[DTid.xy] = float4(0, 0, 0, 1);
+      return;
+    }
+
+    tMin = max(tMin, 0.0);
   }
 
-  tMin = max(tMin, 0.0);
+  // Clamp to scene depth so clouds appear behind geometry
   if (tMin > linearSceneDepth)
   {
     CloudOutput[DTid.xy] = float4(0, 0, 0, 1);
@@ -185,8 +208,9 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
   // Ray march through cloud layer
   float layerThickness = CloudLayerTopAltitude - CloudLayerBottomAltitude;
-  int numSteps = 64;
-  float stepSize = (tMax - tMin) / float(numSteps);
+  float marchDistance = tMax - tMin;
+  int numSteps = clamp((int)(marchDistance / max(layerThickness * 0.015, 0.1)), 16, 96);
+  float stepSize = marchDistance / float(numSteps);
 
   float3 accumulatedColor = 0;
   float accumulatedTransmittance = 1.0;

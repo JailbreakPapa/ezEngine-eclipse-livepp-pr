@@ -6,6 +6,7 @@
 #include <ToolsFoundation/CommandHistory/CommandHistory.h>
 #include <ToolsFoundation/Document/Document.h>
 #include <ToolsFoundation/Serialization/DocumentObjectConverter.h>
+#include <ToolsFoundation/VisualGraph/VisualGraphCommentNode.h>
 #include <ToolsFoundation/VisualGraph/VisualGraphObjectManager.h>
 
 // clang-format off
@@ -198,7 +199,18 @@ bool ezVisualGraphObjectManager::IsNode(const ezDocumentObject* pObject) const
   if (pObject == GetRootObject())
     return false;
 
+  if (IsComment(pObject))
+    return true;
+
   return InternalIsNode(pObject);
+}
+
+bool ezVisualGraphObjectManager::IsComment(const ezDocumentObject* pObject) const
+{
+  if (pObject == nullptr)
+    return false;
+
+  return pObject->GetType()->IsDerivedFrom<ezVisualGraphComment>();
 }
 
 bool ezVisualGraphObjectManager::IsConnection(const ezDocumentObject* pObject) const
@@ -402,7 +414,7 @@ void ezVisualGraphObjectManager::RestoreMetaDataAfterLoading(const ezAbstractObj
     if (pObject != nullptr && IsNode(pObject))
     {
       auto& nodeInternal = m_ObjectToNode[pObject->GetGuid()];
-      if (nodeInternal.m_Inputs.IsEmpty() && nodeInternal.m_Outputs.IsEmpty())
+      if (!IsComment(pObject) && nodeInternal.m_Inputs.IsEmpty() && nodeInternal.m_Outputs.IsEmpty())
       {
         InternalCreatePins(pObject, nodeInternal);
       }
@@ -806,6 +818,9 @@ bool ezVisualGraphObjectManager::TryRecreatePins(const ezDocumentObject* pObject
   if (!IsNode(pObject))
     return false;
 
+  if (IsComment(pObject))
+    return true;
+
   auto& nodeInternal = m_ObjectToNode[pObject->GetGuid()];
 
   for (auto& pPin : nodeInternal.m_Inputs)
@@ -906,7 +921,7 @@ void ezVisualGraphObjectManager::StructureEventHandler(const ezDocumentObjectStr
       if (IsNode(e.m_pObject))
       {
         auto& nodeInternal = m_ObjectToNode[e.m_pObject->GetGuid()];
-        if (nodeInternal.m_Inputs.IsEmpty() && nodeInternal.m_Outputs.IsEmpty())
+        if (!IsComment(e.m_pObject) && nodeInternal.m_Inputs.IsEmpty() && nodeInternal.m_Outputs.IsEmpty())
         {
           InternalCreatePins(e.m_pObject, nodeInternal);
           // TODO: Sanity check pins (duplicate names etc).

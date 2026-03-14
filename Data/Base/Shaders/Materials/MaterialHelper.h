@@ -240,6 +240,8 @@ ezMaterialData FillMaterialData()
 
   matData.subsurfaceProfileIndex = 0; // Default: skin profile
 
+  matData.tangentDirection = float3(0, 0, 1);
+
   return matData;
 }
 

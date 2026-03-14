@@ -98,6 +98,7 @@ void ezGBufferPass::Execute(const ezRenderViewContext& renderViewContext, const 
   // Set GBuffer permutation
   renderViewContext.m_pRenderContext->SetShaderPermutationVariable("RENDER_PASS", "RENDER_PASS_GBUFFER");
   renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADING_QUALITY", "SHADING_QUALITY_NORMAL");
+  renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_LOW");
 
   // Bind clustered lighting data (needed for decals in GBuffer fill and for shadow/light data structures)
   auto pClusteredData = GetPipeline()->GetFrameDataProvider<ezClusteredDataProvider>()->GetData(renderViewContext);

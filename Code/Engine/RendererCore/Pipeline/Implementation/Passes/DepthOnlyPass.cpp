@@ -70,6 +70,7 @@ void ezDepthOnlyPass::Execute(const ezRenderViewContext& renderViewContext, cons
 
   renderViewContext.m_pRenderContext->SetShaderPermutationVariable("RENDER_PASS", "RENDER_PASS_DEPTH_ONLY");
   renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADING_QUALITY", "SHADING_QUALITY_NORMAL");
+  renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_LOW");
 
   // Opaque
   if (m_bRenderStaticObjects)

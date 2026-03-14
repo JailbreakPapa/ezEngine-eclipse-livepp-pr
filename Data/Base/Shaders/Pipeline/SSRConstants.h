@@ -7,6 +7,7 @@
 #define SSR_TRACE_THREAD_GROUP_SIZE 64
 #define SSR_TEMPORAL_THREAD_GROUP_SIZE 8
 #define SSR_HIZ_THREAD_GROUP_SIZE 8
+#define SSR_BLUR_THREAD_GROUP_SIZE 8
 
 CONSTANT_BUFFER(ezSSRConstants, 4)
 {
@@ -27,7 +28,12 @@ CONSTANT_BUFFER(ezSSRConstants, 4)
   UINT1(SSRHiZResolutionY);
   UINT1(SSRCurrentMipLevel);
   BOOL1(SSRHasGBuffer);
-  FLOAT1(SSRPadding0);
+  UINT1(SSRFrameIndex);
 
   MAT4(SSRPrevWorldToClipMatrix);
+
+  FLOAT1(SSREdgeFadeStart);
+  FLOAT1(SSREdgeFadeEnd);
+  FLOAT1(SSRBlurRadius);
+  FLOAT1(SSRBlurSharpness);
 };

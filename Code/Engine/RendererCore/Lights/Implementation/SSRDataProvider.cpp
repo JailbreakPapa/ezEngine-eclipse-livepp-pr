@@ -2,11 +2,15 @@
 
 #include <RendererCore/Lights/SSRDataProvider.h>
 #include <RendererCore/RenderContext/RenderContext.h>
+#include <RendererFoundation/Device/Device.h>
 
 void ezSSRData::BindResources(ezRenderContext* pRenderContext)
 {
-  ezBindGroupBuilder& bindGroup = pRenderContext->GetBindGroup(EZ_GAL_BIND_GROUP_RENDER_PASS);
-  bindGroup.BindTexture("SSRTexture", m_hSSRTexture);
+  if (!m_hSSRTexture.IsInvalidated() && ezGALDevice::GetDefaultDevice()->GetTexture(m_hSSRTexture) != nullptr)
+  {
+    ezBindGroupBuilder& bindGroup = pRenderContext->GetBindGroup(EZ_GAL_BIND_GROUP_RENDER_PASS);
+    bindGroup.BindTexture("SSRTexture", m_hSSRTexture);
+  }
 }
 
 // clang-format off

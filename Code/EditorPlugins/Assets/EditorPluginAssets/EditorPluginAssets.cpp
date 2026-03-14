@@ -46,6 +46,11 @@ static void ConfigureAnimationGraphAsset()
   {
     ezActionMapManager::RegisterActionMap("AnimationGraphAssetToolBar", "AssetToolbar");
   }
+
+  // View Tool Bar
+  {
+    ezActionMapManager::RegisterActionMap("AnimationGraphAssetViewToolBar", "SimpleAssetViewToolbar");
+  }
 }
 
 static void ConfigureTexture2DAsset()

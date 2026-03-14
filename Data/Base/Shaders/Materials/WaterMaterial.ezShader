@@ -1,0 +1,315 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+
+BLEND_MODE
+RENDER_PASS
+SHADING_MODE
+TWO_SIDED = FALSE
+FLIP_WINDING = FALSE
+FORWARD_PASS_WRITE_DEPTH
+MSAA
+CAMERA_MODE
+SHADING_QUALITY
+SHADOW_QUALITY
+VERTEX_SKINNING
+
+[MATERIALPARAMETER]
+
+Permutation BLEND_MODE;
+Permutation SHADING_MODE;
+
+Color WaterColor @Default(Color(0.1, 0.4, 0.6));
+Color DeepWaterColor @Default(Color(0.02, 0.08, 0.15));
+float AbsorptionDistance @Default(5.0) @Clamp(0.1, 100.0);
+
+bool UseNormalMap1;
+Texture2D NormalMap1;
+float NormalScale1 @Default(1.0) @Clamp(0.01, 50.0);
+float FlowSpeed1 @Default(0.03) @Clamp(0.0, 1.0);
+float FlowDirection1 @Default(0.0) @Clamp(0.0, 6.28318);
+
+bool UseNormalMap2;
+Texture2D NormalMap2;
+float NormalScale2 @Default(0.5) @Clamp(0.01, 50.0);
+float FlowSpeed2 @Default(0.02) @Clamp(0.0, 1.0);
+float FlowDirection2 @Default(0.7) @Clamp(0.0, 6.28318);
+
+float RefractionStrength @Default(0.05) @Clamp(0.0, 0.5);
+float FresnelPower @Default(5.0) @Clamp(1.0, 10.0);
+float WaterRoughness @Default(0.05) @Clamp(0.0, 1.0);
+
+bool UseFoam;
+Texture2D FoamTexture;
+float FoamScale @Default(1.0) @Clamp(0.01, 50.0);
+float FoamDepthThreshold @Default(0.5) @Clamp(0.01, 10.0);
+float FoamIntensity @Default(1.0) @Clamp(0.0, 5.0);
+
+bool UseCaustics;
+Texture2D CausticTexture;
+float CausticScale @Default(2.0) @Clamp(0.1, 50.0);
+float CausticIntensity @Default(0.5) @Clamp(0.0, 5.0);
+float CausticSpeed @Default(0.02) @Clamp(0.0, 1.0);
+
+float WaveAmplitude @Default(0.0) @Clamp(0.0, 2.0);
+float WaveFrequency @Default(0.5) @Clamp(0.01, 5.0);
+float WaveSpeed @Default(1.0) @Clamp(0.0, 10.0);
+
+[MATERIALCONFIG]
+
+#include <Shaders/Materials/MaterialConfig.h>
+
+[RENDERSTATE]
+
+#include <Shaders/Materials/MaterialState.h>
+
+[MATERIALCONSTANTS]
+
+COLOR4F(WaterColor);
+COLOR4F(DeepWaterColor);
+FLOAT1(AbsorptionDistance);
+BOOL1(UseNormalMap1);
+FLOAT1(NormalScale1);
+FLOAT1(FlowSpeed1);
+FLOAT1(FlowDirection1);
+BOOL1(UseNormalMap2);
+FLOAT1(NormalScale2);
+FLOAT1(FlowSpeed2);
+FLOAT1(FlowDirection2);
+FLOAT1(RefractionStrength);
+FLOAT1(FresnelPower);
+FLOAT1(WaterRoughness);
+BOOL1(UseFoam);
+FLOAT1(FoamScale);
+FLOAT1(FoamDepthThreshold);
+FLOAT1(FoamIntensity);
+BOOL1(UseCaustics);
+FLOAT1(CausticScale);
+FLOAT1(CausticIntensity);
+FLOAT1(CausticSpeed);
+FLOAT1(WaveAmplitude);
+FLOAT1(WaveFrequency);
+FLOAT1(WaveSpeed);
+
+[VERTEXSHADER]
+
+#define USE_NORMAL
+#define USE_TANGENT
+#define USE_TEXCOORD0
+#define USE_WORLD_POSITION_OFFSET
+
+#if VERTEX_SKINNING
+  #define USE_SKINNING
+#endif
+
+#include <Shaders/Materials/MaterialVertexShader.h>
+
+float3 GetWorldPositionOffset(ezPerInstanceData data, float3 worldPosition)
+{
+  float amplitude = GetMaterialData(WaveAmplitude);
+  if (amplitude <= 0.0)
+    return float3(0, 0, 0);
+
+  float freq = GetMaterialData(WaveFrequency);
+  float speed = GetMaterialData(WaveSpeed);
+  float time = GlobalTime;
+
+  // Dual Gerstner-inspired wave displacement
+  float wave1 = sin(worldPosition.x * freq + time * speed) * amplitude;
+  float wave2 = sin(worldPosition.y * freq * 0.7 + time * speed * 0.8 + 1.37) * amplitude * 0.6;
+
+  return float3(0, 0, wave1 + wave2);
+}
+
+VS_OUT main(VS_IN Input)
+{
+  return FillVertexData(Input);
+}
+
+[PIXELSHADER]
+
+#define USE_NORMAL
+#define USE_TANGENT
+#define USE_TEXCOORD0
+#define USE_SIMPLE_MATERIAL_MODEL
+#define USE_MATERIAL_EMISSIVE
+#define USE_MATERIAL_REFRACTION
+#define USE_MATERIAL_OCCLUSION
+#define USE_TWO_SIDED_LIGHTING
+#define USE_FOG
+
+#if RENDER_PASS == RENDER_PASS_EDITOR
+  #define USE_DEBUG_INTERPOLATOR
+#endif
+
+#include <Shaders/Materials/MaterialPixelShader.h>
+
+Texture2D NormalMap1 BIND_GROUP(BG_MATERIAL);
+SamplerState NormalMap1_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D NormalMap2 BIND_GROUP(BG_MATERIAL);
+SamplerState NormalMap2_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D FoamTexture BIND_GROUP(BG_MATERIAL);
+SamplerState FoamTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D CausticTexture BIND_GROUP(BG_MATERIAL);
+SamplerState CausticTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+float2 AnimateUV(float2 baseUV, float scale, float time, float speed, float direction)
+{
+  float2 flowDir = float2(cos(direction), sin(direction));
+  return baseUV * scale + flowDir * time * speed;
+}
+
+float ComputeWaterDepth(float4 screenPosition)
+{
+  float2 screenUV = screenPosition.xy * ViewportSize.zw;
+  float depthFromZBuffer = SceneDepth.SampleLevel(PointSampler, float3(screenUV, s_ActiveCameraEyeIndex), 0).r;
+  float sceneLinearDepth = LinearizeZBufferDepth(depthFromZBuffer);
+  float surfaceLinearDepth = screenPosition.w;
+  return max(sceneLinearDepth - surfaceLinearDepth, 0.0);
+}
+
+float3 GetNormal()
+{
+  float time = GlobalTime;
+  float3 normal1 = float3(0, 0, 1);
+  float3 normal2 = float3(0, 0, 1);
+
+  [branch]
+  if (GetMaterialData(UseNormalMap1))
+  {
+    float2 uv1 = AnimateUV(G.Input.TexCoord0.xy, GetMaterialData(NormalScale1), time, GetMaterialData(FlowSpeed1), GetMaterialData(FlowDirection1));
+    normal1 = DecodeNormalTexture(NormalMap1.Sample(NormalMap1_AutoSampler, uv1));
+  }
+
+  [branch]
+  if (GetMaterialData(UseNormalMap2))
+  {
+    float2 uv2 = AnimateUV(G.Input.TexCoord0.xy, GetMaterialData(NormalScale2), time, GetMaterialData(FlowSpeed2), GetMaterialData(FlowDirection2));
+    normal2 = DecodeNormalTexture(NormalMap2.Sample(NormalMap2_AutoSampler, uv2));
+  }
+
+  // UDN blending: add XY components then renormalize
+  float3 blended;
+  blended.xy = normal1.xy + normal2.xy;
+  blended.z = normal1.z;
+  blended = normalize(blended);
+
+  return TangentToWorldSpace(blended);
+}
+
+float3 GetBaseColor()
+{
+  float waterDepth = ComputeWaterDepth(G.Input.Position);
+  float depthFactor = saturate(waterDepth / GetMaterialData(AbsorptionDistance));
+
+  float3 shallowColor = GetMaterialData(WaterColor).rgb;
+  float3 deepColor = GetMaterialData(DeepWaterColor).rgb;
+
+  return lerp(shallowColor, deepColor, depthFactor) * GetInstanceData().Color.rgb;
+}
+
+float GetMetallic()
+{
+  return 0.0;
+}
+
+float GetReflectance()
+{
+  return 0.5;
+}
+
+float GetRoughness()
+{
+  return GetMaterialData(WaterRoughness);
+}
+
+float GetOpacity()
+{
+  float waterDepth = ComputeWaterDepth(G.Input.Position);
+
+  // Deeper water is more opaque
+  float depthOpacity = saturate(waterDepth / (GetMaterialData(AbsorptionDistance) * 0.5));
+
+  // Fresnel: more reflective (less transparent) at grazing angles
+  float3 viewVector = normalize(GetCameraPosition() - G.Input.WorldPosition);
+  float NdotV = saturate(dot(normalize(G.Input.Normal), viewVector));
+  float fresnel = pow(1.0 - NdotV, GetMaterialData(FresnelPower));
+
+  float opacity = lerp(depthOpacity, 1.0, fresnel);
+  return saturate(opacity * GetInstanceData().Color.a * GetMaterialData(WaterColor).a);
+}
+
+float3 GetEmissiveColor()
+{
+  float3 emissive = float3(0, 0, 0);
+  float waterDepth = ComputeWaterDepth(G.Input.Position);
+
+  // Edge foam
+  [branch]
+  if (GetMaterialData(UseFoam))
+  {
+    float foamThreshold = GetMaterialData(FoamDepthThreshold);
+    float foamMask = saturate(1.0 - waterDepth / foamThreshold);
+    foamMask *= foamMask; // sharpen foam edge
+
+    float time = GlobalTime;
+    float2 foamUV1 = G.Input.TexCoord0.xy * GetMaterialData(FoamScale) + float2(time * 0.01, time * 0.005);
+    float2 foamUV2 = G.Input.TexCoord0.xy * GetMaterialData(FoamScale) * 0.7 + float2(-time * 0.008, time * 0.012);
+
+    float foam1 = FoamTexture.Sample(FoamTexture_AutoSampler, foamUV1).r;
+    float foam2 = FoamTexture.Sample(FoamTexture_AutoSampler, foamUV2).r;
+    float foam = min(foam1 + foam2, 1.0);
+
+    emissive += foam * foamMask * GetMaterialData(FoamIntensity);
+  }
+
+  // Underwater caustics projected onto the scene geometry below the water
+  [branch]
+  if (GetMaterialData(UseCaustics) && waterDepth > 0.01)
+  {
+    float time = GlobalTime;
+    float causticScale = GetMaterialData(CausticScale);
+    float causticSpeed = GetMaterialData(CausticSpeed);
+
+    // Project caustics using world position at the underwater surface
+    float2 screenUV = G.Input.Position.xy * ViewportSize.zw;
+    float depthFromZBuffer = SceneDepth.SampleLevel(PointSampler, float3(screenUV, s_ActiveCameraEyeIndex), 0).r;
+    float3 screenCoord = float3(screenUV * float2(2.0, -2.0) + float2(-1.0, 1.0), depthFromZBuffer);
+    float4 underwaterWorldH = mul(GetScreenToWorldMatrix(), float4(screenCoord, 1.0));
+    float3 underwaterWorld = underwaterWorldH.xyz / underwaterWorldH.w;
+
+    // Dual-layer animated caustics for a more complex pattern
+    float2 causticUV1 = underwaterWorld.xy * causticScale + float2(time * causticSpeed, time * causticSpeed * 0.7);
+    float2 causticUV2 = underwaterWorld.xy * causticScale * 1.3 + float2(-time * causticSpeed * 0.8, time * causticSpeed * 0.5);
+
+    float caustic1 = CausticTexture.Sample(CausticTexture_AutoSampler, causticUV1).r;
+    float caustic2 = CausticTexture.Sample(CausticTexture_AutoSampler, causticUV2).r;
+
+    // Intersection of two caustic layers creates a more realistic pattern
+    float causticPattern = min(caustic1, caustic2);
+
+    // Attenuate caustics with depth
+    float causticFade = saturate(1.0 - waterDepth / (GetMaterialData(AbsorptionDistance) * 0.8));
+    emissive += causticPattern * causticFade * GetMaterialData(CausticIntensity);
+  }
+
+  return emissive;
+}
+
+float4 GetRefractionColor()
+{
+  float3 worldNormal = normalize(GetNormal());
+  float2 normalDistortion = (worldNormal.xy - G.Input.Normal.xy) * GetMaterialData(RefractionStrength);
+
+  float2 refractedScreenPos;
+  return CalculateRefraction(G.Input.WorldPosition, G.Input.Position, worldNormal, normalDistortion, GetOpacity(), refractedScreenPos);
+}
+
+float GetOcclusion()
+{
+  return 1.0;
+}

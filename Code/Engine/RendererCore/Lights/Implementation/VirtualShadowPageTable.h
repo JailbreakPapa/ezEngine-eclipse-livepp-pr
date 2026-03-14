@@ -18,6 +18,8 @@ public:
     ezUInt32 m_uiLastUsedFrame = 0;
     bool m_bDirty = true;
     bool m_bRequested = false;
+    ezInt32 m_iWrapOffsetX = 0; ///< Toroidal wrap period when last rendered, X axis.
+    ezInt32 m_iWrapOffsetY = 0; ///< Toroidal wrap period when last rendered, Y axis.
   };
 
   ezVirtualShadowPageTable();
@@ -37,6 +39,9 @@ public:
 
   /// Clear the dirty flag for a page after it has been rendered.
   void ClearDirtyFlag(ezUInt32 uiLevel, ezUInt32 uiPageX, ezUInt32 uiPageY);
+
+  /// Store the toroidal wrap offset for a page after rendering.
+  void SetWrapOffset(ezUInt32 uiLevel, ezUInt32 uiPageX, ezUInt32 uiPageY, ezInt32 iWrapX, ezInt32 iWrapY);
 
   /// Get the page info for a given virtual page.
   const PageInfo& GetPageInfo(ezUInt32 uiLevel, ezUInt32 uiPageX, ezUInt32 uiPageY) const;

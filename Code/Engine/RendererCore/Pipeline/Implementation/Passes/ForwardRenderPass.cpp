@@ -9,6 +9,8 @@
 #include <RendererCore/RenderContext/RenderContext.h>
 #include <RendererCore/Textures/Texture2DResource.h>
 
+#include <Foundation/Configuration/CVar.h>
+
 #include <RendererFoundation/Resources/RenderTargetView.h>
 #include <RendererFoundation/Resources/Texture.h>
 
@@ -144,6 +146,17 @@ void ezForwardRenderPass::SetupPermutationVars(const ezRenderViewContext& render
   else
   {
     EZ_REPORT_FAILURE("Unknown shading quality setting.");
+  }
+
+  // Set permutation for shadow quality
+  {
+    extern ezCVarInt cvar_RenderingShadowsQuality;
+    if (cvar_RenderingShadowsQuality == 0)
+      renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_LOW");
+    else if (cvar_RenderingShadowsQuality >= 2)
+      renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_HIGH");
+    else
+      renderViewContext.m_pRenderContext->SetShaderPermutationVariable("SHADOW_QUALITY", "SHADOW_QUALITY_MEDIUM");
   }
 }
 

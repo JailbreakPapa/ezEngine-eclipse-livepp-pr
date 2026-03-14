@@ -22,6 +22,7 @@ public:
   ezGALBufferHandle m_hLightDataBuffer;
   ezGALBufferHandle m_hDecalDataBuffer;
   ezGALBufferHandle m_hReflectionProbeDataBuffer;
+  ezGALBufferHandle m_hFogVolumeDataBuffer;
   ezGALBufferHandle m_hClusterDataBuffer;
   ezGALBufferHandle m_hClusterItemBuffer;
 
@@ -31,6 +32,12 @@ public:
 
   ezDecalAtlasResourceHandle m_hDecalAtlas;
   ezGALSamplerStateHandle m_hDecalAtlasSampler;
+
+  /// Fog volume parameters derived from the first fog volume (used by VolumetricFogPass).
+  float m_fFogNearPlane = 0.5f;
+  float m_fFogFarPlane = 500.0f;
+  float m_fFogTemporalBlendWeight = 0.05f;
+  ezUInt32 m_uiNumFogVolumes = 0;
 
   void BindResources(ezRenderContext* pRenderContext);
 };
