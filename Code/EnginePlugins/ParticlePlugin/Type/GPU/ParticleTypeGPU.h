@@ -35,6 +35,10 @@ public:
 
   ezColor m_ColorStart = ezColor::White;
   ezColor m_ColorEnd = ezColor(1, 1, 1, 0);
+
+  ezEnum<ezGPUParticleRenderType> m_GPURenderType;
+  ezUInt32 m_uiMaxTrailPoints = 16;
+  float m_fVelocityStretch = 1.0f;
 };
 
 class EZ_PARTICLEPLUGIN_DLL ezParticleTypeGPU final : public ezParticleType
@@ -66,6 +70,10 @@ public:
   ezColor m_ColorStart = ezColor::White;
   ezColor m_ColorEnd = ezColor(1, 1, 1, 0);
 
+  ezEnum<ezGPUParticleRenderType> m_GPURenderType;
+  ezUInt32 m_uiMaxTrailPoints = 16;
+  float m_fVelocityStretch = 1.0f;
+
 protected:
   friend class ezParticleTypeGPUFactory;
 
@@ -82,10 +90,10 @@ protected:
   ezProcessingStream* m_pStreamRotationSpeed = nullptr;
   ezProcessingStream* m_pStreamRotationOffset = nullptr;
 
-  mutable ezGALBufferHandle m_hParticleBufferA;
-  mutable ezGALBufferHandle m_hParticleBufferB;
+  mutable ezGALBufferHandle m_hParticleBuffer;
   mutable ezGALBufferHandle m_hCounterBuffer;
-  mutable bool m_bUsePingA = true;
+  mutable ezGALBufferHandle m_hTrailPositionBuffer;
   mutable bool m_bGPUBuffersCreated = false;
   mutable ezUInt32 m_uiGPUEmitIndex = 0;
+  mutable ezUInt32 m_uiTrailWriteIndex = 0;
 };

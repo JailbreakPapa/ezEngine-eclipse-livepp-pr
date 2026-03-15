@@ -165,6 +165,39 @@ void ezQtVisualGraphView::drawBackground(QPainter* painter, const QRectF& r)
   }
 }
 
+void ezQtVisualGraphView::FrameContent()
+{
+  if (m_pScene == nullptr || width() == 0 || height() == 0)
+    return;
+
+  // Compute bounding rect of all visible items
+  QRectF contentRect;
+  for (QGraphicsItem* pItem : m_pScene->items())
+  {
+    if (pItem->isVisible() && pItem->parentItem() == nullptr)
+    {
+      contentRect = contentRect.united(pItem->sceneBoundingRect());
+    }
+  }
+
+  if (contentRect.isEmpty())
+    return;
+
+  // Add margin around the content
+  const double fMargin = 50.0;
+  contentRect.adjust(-fMargin, -fMargin, fMargin, fMargin);
+
+  // Compute the scale needed to fit the content in the viewport
+  const double fScaleX = width() / contentRect.width();
+  const double fScaleY = height() / contentRect.height();
+  double fScale = qMin(fScaleX, fScaleY);
+  fScale = ezMath::Clamp(fScale, 0.01, 2.0);
+
+  m_ViewScale = QPointF(fScale, fScale);
+  m_ViewPos = contentRect.topLeft();
+  UpdateView();
+}
+
 void ezQtVisualGraphView::UpdateView()
 {
   QRectF sceneRect(m_ViewPos.x(), m_ViewPos.y(), width() / m_ViewScale.x(), height() / m_ViewScale.y());

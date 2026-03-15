@@ -20,6 +20,9 @@ public:
   void SetScene(ezQtVisualGraphScene* pScene);
   ezQtVisualGraphScene* GetScene();
 
+  /// Centers and scales the view to frame all visible scene items with some margin.
+  void FrameContent();
+
 protected:
   virtual void mousePressEvent(QMouseEvent* event) override;
   virtual void mouseMoveEvent(QMouseEvent* event) override;

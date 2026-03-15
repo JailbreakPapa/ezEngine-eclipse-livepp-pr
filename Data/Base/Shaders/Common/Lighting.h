@@ -43,6 +43,7 @@ Texture3D VolumetricFogTexture;
 // Pass data
 Texture2DArray SSAOTexture BIND_GROUP(BG_RENDER_PASS);
 Texture2DArray SSRTexture BIND_GROUP(BG_RENDER_PASS);
+Texture2DArray ScreenSpaceShadowTexture BIND_GROUP(BG_RENDER_PASS);
 Texture2DArray SceneDepth BIND_GROUP(BG_RENDER_PASS);
 Texture2DArray SceneColor BIND_GROUP(BG_RENDER_PASS);
 SamplerState SceneColorSampler BIND_GROUP(BG_RENDER_PASS);
@@ -728,6 +729,14 @@ AccumulatedLight CalculateLighting(ezMaterialData matData, ezPerClusterData clus
           float extraPenumbraScale = 1.0;
 
           shadowTerm = CalculateShadowTerm(matData.worldPosition, matData.vertexNormal, lightVector, distanceToLight, type, lightData.shadowDataOffsetAndFadeOut, noise, randomRotation, extraPenumbraScale, subsurfaceShadow, debugColor);
+        }
+
+        // Apply screen-space contact shadows for the brightest directional light
+        if (type == LIGHT_TYPE_DIR && lightIndex == BrightestDirectionalLightIndex && ScreenSpaceShadowEnabled != 0)
+        {
+          float2 ssUV = screenPosition.xy * ViewportSize.zw;
+          float ssShadow = ScreenSpaceShadowTexture.SampleLevel(LinearClampSampler, float3(ssUV, s_ActiveCameraEyeIndex), 0).r;
+          shadowTerm = min(shadowTerm, ssShadow);
         }
 
         attenuation *= lightData.intensity;

@@ -35,6 +35,7 @@ public:
   ezArrayPtr<ezUInt32> m_ClusterItemList;
 
   ezUInt32 m_uiBrightestDirectionalLightIndex = 0;
+  ezVec3 m_vBrightestDirectionalLightDirection = ezVec3(0, 0, -1);
   ezUInt32 m_uiSkyIrradianceIndex = 0;
   ezEnum<ezCameraUsageHint> m_cameraUsageHint = ezCameraUsageHint::Default;
 

@@ -232,6 +232,8 @@ void* ezClusteredDataProvider::UpdateData(const ezRenderViewContext& renderViewC
     pConstants->BrightestDirectionalLightIndex = pData->m_uiBrightestDirectionalLightIndex;
     pConstants->SkyIrradianceIndex = pData->m_uiSkyIrradianceIndex;
 
+    m_Data.m_vBrightestDirectionalLightDirection = pData->m_vBrightestDirectionalLightDirection;
+
     pConstants->FogHeight = pData->m_fFogHeight;
     pConstants->FogHeightFalloff = pData->m_fFogHeightFalloff;
     pConstants->FogDensityAtCameraPos = pData->m_fFogDensityAtCameraPos;
@@ -243,7 +245,7 @@ void* ezClusteredDataProvider::UpdateData(const ezRenderViewContext& renderViewC
     pConstants->VolumetricFogEnabled = pData->m_bVolumetricFogEnabled ? 1u : 0u;
     pConstants->VSMEnabled = pData->m_bVSMEnabled ? 1u : 0u;
     pConstants->NumFogVolumes = pData->m_FogVolumeData.GetCount();
-    pConstants->ClusteredPadding0 = 0;
+    pConstants->ScreenSpaceShadowEnabled = 0;
 
     // Store fog volume params for use by VolumetricFogPass
     m_Data.m_uiNumFogVolumes = pData->m_FogVolumeData.GetCount();

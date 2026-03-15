@@ -3,6 +3,7 @@
 #include <Foundation/IO/TypeVersionContext.h>
 #include <RendererCore/Debug/DebugRenderer.h>
 #include <RendererCore/Lights/ClusteredDataProvider.h>
+#include <RendererCore/Lights/ScreenSpaceShadowDataProvider.h>
 #include <RendererCore/Lights/SimplifiedDataProvider.h>
 #include <RendererCore/Pipeline/Passes/ForwardRenderPass.h>
 #include <RendererCore/Pipeline/RenderPipeline.h>
@@ -167,6 +168,17 @@ void ezForwardRenderPass::SetupLighting(const ezRenderViewContext& renderViewCon
   {
     auto pClusteredData = GetPipeline()->GetFrameDataProvider<ezClusteredDataProvider>()->GetData(renderViewContext);
     pClusteredData->BindResources(renderViewContext.m_pRenderContext);
+
+    // Bind screen-space shadow data (if available)
+    auto pSSSProvider = GetPipeline()->GetFrameDataProvider<ezScreenSpaceShadowDataProvider>();
+    if (pSSSProvider != nullptr)
+    {
+      auto pSSSData = pSSSProvider->GetData(renderViewContext);
+      if (pSSSData != nullptr)
+      {
+        pSSSData->BindResources(renderViewContext.m_pRenderContext);
+      }
+    }
   }
   // Or other light properties.
   else

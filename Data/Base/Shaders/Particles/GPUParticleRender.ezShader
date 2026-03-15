@@ -3,6 +3,7 @@ ALL
 
 [PERMUTATIONS]
 PARTICLE_RENDER_MODE
+GPU_PARTICLE_TYPE
 CAMERA_MODE
 SHADING_QUALITY
 
@@ -13,7 +14,14 @@ SHADING_QUALITY
 
 #include <Shaders/Common/Common.h>
 #include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/CameraConstantsAccess.h>
 #include "GPUParticleConstants.h"
+
+#if SHADING_QUALITY == SHADING_QUALITY_NORMAL
+#  include <Shaders/Common/Lighting.h>
+#elif SHADING_QUALITY == SHADING_QUALITY_SIMPLIFIED
+#  include <Shaders/Common/LightingSimplified.h>
+#endif
 
 struct ezGPUParticle
 {
@@ -33,6 +41,10 @@ struct ezGPUParticle
 
 StructuredBuffer<ezGPUParticle> gpuParticlesRead BIND_GROUP(BG_DRAW_CALL);
 
+#if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
+StructuredBuffer<float4> gpuTrailPositionsRead BIND_GROUP(BG_DRAW_CALL);
+#endif
+
 static float2 QuadTexCoords[6] =
 {
   float2(1.0, 0.0),
@@ -43,22 +55,75 @@ static float2 QuadTexCoords[6] =
   float2(0.0, 0.0),
 };
 
-static float2 QuadOffsets[6] =
+static float2 QuadTexCoordsAxisAligned[6] =
 {
-  float2(-0.5, 0.5),
-  float2(-0.5, -0.5),
-  float2(0.5, -0.5),
-  float2(-0.5, 0.5),
-  float2(0.5, -0.5),
-  float2(0.5, 0.5),
+  float2(0.0, 1.0),
+  float2(1.0, 1.0),
+  float2(1.0, 0.0),
+  float2(0.0, 1.0),
+  float2(1.0, 0.0),
+  float2(0.0, 0.0),
 };
+
+static float2 QuadPosOffsets[6] =
+{
+  float2(0.0, 0.0),
+  float2(1.0, 0.0),
+  float2(1.0, 1.0),
+  float2(0.0, 0.0),
+  float2(1.0, 1.0),
+  float2(0.0, 1.0),
+};
+
+float4 UnpackGPUParticleColor(ezGPUParticle p)
+{
+  float4 color;
+  color.r = f16tof32(p.Color0);
+  color.g = f16tof32(p.Color0 >> 16);
+  color.b = f16tof32(p.Color1);
+  color.a = f16tof32(p.Color1 >> 16);
+  return color;
+}
 
 struct VS_OUT
 {
   float4 Position : SV_Position;
   float2 TexCoord0 : TEXCOORD0;
   float4 Color0 : COLOR0;
+  float FogAmount : FOG;
 };
+
+// ================================================================
+// Point Particles
+// ================================================================
+#if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_POINT
+
+VS_OUT main(uint VertexID : SV_VertexID)
+{
+  VS_OUT ret;
+
+  ezGPUParticle p = gpuParticlesRead[VertexID];
+
+  if ((p.Flags & 1u) == 0 || p.Life <= 0.0)
+  {
+    ret.Position = float4(0, 0, 0, 1);
+    ret.TexCoord0 = float2(0.5, 0.5);
+    ret.Color0 = float4(0, 0, 0, 0);
+    ret.FogAmount = 1.0;
+    return ret;
+  }
+
+  ret.Position = mul(GetWorldToScreenMatrix(), float4(p.Position, 1.0));
+  ret.TexCoord0 = float2(0.5, 0.5);
+  ret.Color0 = UnpackGPUParticleColor(p);
+  ret.FogAmount = GetFogAmount(p.Position);
+  return ret;
+}
+
+// ================================================================
+// Velocity-Aligned Particles
+// ================================================================
+#elif GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_VELOCITY_ALIGNED
 
 VS_OUT main(uint VertexID : SV_VertexID)
 {
@@ -69,51 +134,167 @@ VS_OUT main(uint VertexID : SV_VertexID)
 
   ezGPUParticle p = gpuParticlesRead[dataIndex];
 
-  // Dead particles: degenerate triangle
   if ((p.Flags & 1u) == 0 || p.Life <= 0.0)
   {
-    ret.Position = float4(0, 0, 0, 0);
+    ret.Position = float4(0, 0, 0, 1);
     ret.TexCoord0 = float2(0, 0);
     ret.Color0 = float4(0, 0, 0, 0);
+    ret.FogAmount = 1.0;
     return ret;
   }
 
   float size = p.Size;
   float3 worldPos = p.Position;
 
-  // Billboard: expand quad using camera right/up from the view matrix
-  float3 cameraRight = float3(GetWorldToCameraMatrix()._11, GetWorldToCameraMatrix()._21, GetWorldToCameraMatrix()._31);
-  float3 cameraUp = float3(GetWorldToCameraMatrix()._12, GetWorldToCameraMatrix()._22, GetWorldToCameraMatrix()._32);
+  float speed = length(p.Velocity);
+  float3 axisDir = speed > 0.001 ? p.Velocity / speed : float3(0, 1, 0);
+  float3 orthoDir = normalize(cross(axisDir, GetCameraDirForwards()));
 
-  // Apply rotation
-  float rotAngle = p.RotationOffset;
-  float cosA = cos(rotAngle);
-  float sinA = sin(rotAngle);
-  float2 offset = QuadOffsets[vertexIndex];
-  float2 rotatedOffset = float2(
-    offset.x * cosA - offset.y * sinA,
-    offset.x * sinA + offset.y * cosA
-  );
+  float stretch = GPUPartVelocityStretch;
+  float3 offsetRight = orthoDir * ((QuadPosOffsets[vertexIndex].x - 0.5) * size);
+  float3 offsetUp = axisDir * (QuadPosOffsets[vertexIndex].y * size * -stretch);
 
-  float3 vertexWorld = worldPos + (cameraRight * rotatedOffset.x + cameraUp * rotatedOffset.y) * size;
+  float3 vertexWorld = worldPos + offsetRight + offsetUp;
 
   ret.Position = mul(GetWorldToScreenMatrix(), float4(vertexWorld, 1.0));
-  ret.TexCoord0 = QuadTexCoords[vertexIndex];
-
-  // Unpack color (RGBA16F stored as two uint32)
-  float4 color;
-  color.r = f16tof32(p.Color0);
-  color.g = f16tof32(p.Color0 >> 16);
-  color.b = f16tof32(p.Color1);
-  color.a = f16tof32(p.Color1 >> 16);
-  ret.Color0 = color;
-
+  ret.TexCoord0 = QuadTexCoordsAxisAligned[vertexIndex];
+  ret.Color0 = UnpackGPUParticleColor(p);
+  ret.FogAmount = GetFogAmount(vertexWorld);
   return ret;
 }
 
+// ================================================================
+// Trail Particles
+// ================================================================
+#elif GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
+
+VS_OUT main(uint VertexID : SV_VertexID)
+{
+  VS_OUT ret;
+
+  uint trailSegments = GPUPartMaxTrailPoints - 1;
+  uint vertsPerParticle = trailSegments * 6;
+  uint particleIndex = VertexID / vertsPerParticle;
+  uint remainder = VertexID % vertsPerParticle;
+  uint segmentIndex = remainder / 6;
+  uint vertexSubIndex = remainder % 6;
+
+  int trailIndexOffset[6] = {0, 1, 1, 0, 1, 0};
+  uint vertexTrailPointIndex = segmentIndex + trailIndexOffset[vertexSubIndex];
+
+  ezGPUParticle p = gpuParticlesRead[particleIndex];
+
+  if ((p.Flags & 1u) == 0 || p.Life <= 0.0)
+  {
+    ret.Position = float4(0, 0, 0, 1);
+    ret.TexCoord0 = float2(0, 0);
+    ret.Color0 = float4(0, 0, 0, 0);
+    ret.FogAmount = 1.0;
+    return ret;
+  }
+
+  // Read trail positions from ring buffer (most recent at writeIndex-1, oldest at writeIndex)
+  uint trailBase = particleIndex * GPUPartMaxTrailPoints;
+  uint readIndex = (GPUPartTrailWriteIndex + GPUPartMaxTrailPoints - vertexTrailPointIndex) % GPUPartMaxTrailPoints;
+  float4 posSizeCur = gpuTrailPositionsRead[trailBase + readIndex];
+
+  uint readIndexPrev = (GPUPartTrailWriteIndex + GPUPartMaxTrailPoints - max((int)vertexTrailPointIndex - 1, 0)) % GPUPartMaxTrailPoints;
+  uint readIndexNext = (GPUPartTrailWriteIndex + GPUPartMaxTrailPoints - min(vertexTrailPointIndex + 1, GPUPartMaxTrailPoints - 1)) % GPUPartMaxTrailPoints;
+  float3 posP = gpuTrailPositionsRead[trailBase + readIndexPrev].xyz;
+  float3 posN = gpuTrailPositionsRead[trailBase + readIndexNext].xyz;
+
+  float3 avgDirection = posN - posP;
+  float dirLen = length(avgDirection);
+
+  // Collapse degenerate segments
+  if (dirLen < 0.0001)
+  {
+    ret.Position = float4(0, 0, 0, 1);
+    ret.TexCoord0 = float2(0, 0);
+    ret.Color0 = float4(0, 0, 0, 0);
+    ret.FogAmount = 1.0;
+    return ret;
+  }
+
+  float3 dirRight = avgDirection;
+  float trailSize = posSizeCur.w;
+  float3 dirUp = normalize(cross(dirRight, GetCameraDirForwards())) * trailSize;
+
+  float4 offsetUp = float4(dirUp * (QuadPosOffsets[vertexSubIndex].y - 0.5), 0);
+  float3 vertexWorld = posSizeCur.xyz + offsetUp.xyz;
+
+  ret.Position = mul(GetWorldToScreenMatrix(), float4(vertexWorld, 1.0));
+
+  // UV: Y along trail length, X across ribbon width
+  float uvStep = 1.0 / (float)trailSegments;
+  ret.TexCoord0 = float2(1.0 - QuadPosOffsets[vertexSubIndex].y, uvStep * vertexTrailPointIndex);
+
+  ret.Color0 = UnpackGPUParticleColor(p);
+  ret.FogAmount = GetFogAmount(vertexWorld);
+  return ret;
+}
+
+// ================================================================
+// Billboard Particles (default)
+// ================================================================
+#else
+
+VS_OUT main(uint VertexID : SV_VertexID)
+{
+  VS_OUT ret;
+
+  uint dataIndex = VertexID / 6;
+  uint vertexIndex = VertexID % 6;
+
+  ezGPUParticle p = gpuParticlesRead[dataIndex];
+
+  // Dead particles: degenerate zero-area triangle (w=1 avoids undefined perspective divide)
+  if ((p.Flags & 1u) == 0 || p.Life <= 0.0)
+  {
+    ret.Position = float4(0, 0, 0, 1);
+    ret.TexCoord0 = float2(0, 0);
+    ret.Color0 = float4(0, 0, 0, 0);
+    ret.FogAmount = 1.0;
+    return ret;
+  }
+
+  float size = p.Size;
+  float3 worldPos = p.Position;
+
+  // Billboard rotation matching CPU particle path (CalcQuadOutputPositionAsBillboard)
+  float2 angles;
+  sincos(p.RotationOffset, angles.x, angles.y);
+  float2x2 rotation = {angles.x, -angles.y, angles.y, angles.x};
+  float2 quadCorners = mul(rotation, QuadPosOffsets[vertexIndex] - 0.5);
+
+  // Billboard expansion using camera axes
+  float3 offsetRight = GetCameraDirRight() * (quadCorners.x * size);
+  float3 offsetUp = GetCameraDirUp() * (quadCorners.y * -size);
+
+  float3 vertexWorld = worldPos + offsetRight + offsetUp;
+
+  ret.Position = mul(GetWorldToScreenMatrix(), float4(vertexWorld, 1.0));
+  ret.TexCoord0 = QuadTexCoords[vertexIndex];
+  ret.Color0 = UnpackGPUParticleColor(p);
+  ret.FogAmount = GetFogAmount(vertexWorld);
+  return ret;
+}
+
+#endif
+
+// ================================================================
+// Pixel Shader (shared by all render types)
+// ================================================================
 [PIXELSHADER]
 
 #include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+
+#if SHADING_QUALITY == SHADING_QUALITY_NORMAL
+#  include <Shaders/Common/Lighting.h>
+#elif SHADING_QUALITY == SHADING_QUALITY_SIMPLIFIED
+#  include <Shaders/Common/LightingSimplified.h>
+#endif
 
 Texture2D ParticleTexture BIND_GROUP(BG_DRAW_CALL);
 SamplerState ParticleTexture_AutoSampler BIND_GROUP(BG_DRAW_CALL);
@@ -123,6 +304,7 @@ struct PS_IN
   float4 Position : SV_Position;
   float2 TexCoord0 : TEXCOORD0;
   float4 Color0 : COLOR0;
+  float FogAmount : FOG;
 };
 
 float4 main(PS_IN input) : SV_Target
@@ -130,8 +312,27 @@ float4 main(PS_IN input) : SV_Target
   float4 texColor = ParticleTexture.Sample(ParticleTexture_AutoSampler, input.TexCoord0);
   float4 finalColor = texColor * input.Color0;
 
-  if (finalColor.a < 0.01)
+  // Proximity fade: soft depth intersection + close-to-camera fade
+  float proximityFade = 1.0;
+#if CAMERA_MODE != CAMERA_MODE_ORTHO
+  float depthFade = DepthFade(input.Position.xyw, 0.1);
+  float cameraFade = saturate(input.Position.w / 0.5);
+  proximityFade = depthFade * cameraFade;
+#endif
+
+  float opacity = finalColor.a * proximityFade;
+
+  if (opacity < 1.0 / 255.0)
     discard;
 
-  return finalColor;
+#if PARTICLE_RENDER_MODE == PARTICLE_RENDER_MODE_OPAQUE
+  return float4(finalColor.rgb, 1.0);
+#elif PARTICLE_RENDER_MODE == PARTICLE_RENDER_MODE_ADDITIVE
+  // Additive: fade out both color and alpha with fog (matches CPU particle behavior)
+  return float4(finalColor.rgb * opacity * input.FogAmount, opacity);
+#else
+  // Blended: apply fog to color
+  float3 fogged = lerp(FogColor.rgb, finalColor.rgb, input.FogAmount);
+  return float4(fogged, opacity);
+#endif
 }

@@ -3,6 +3,7 @@ ALL
 
 [PERMUTATIONS]
 CAMERA_MODE
+GPU_PARTICLE_TYPE
 
 [COMPUTESHADER]
 
@@ -31,6 +32,10 @@ RWStructuredBuffer<ezGPUParticle> gpuParticlesCurrent;
 RWByteAddressBuffer gpuParticleCounters;
 Texture2D<float> SceneDepth;
 Texture3D<float> SDFTexture;
+
+#if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
+RWStructuredBuffer<float4> gpuTrailPositions;
+#endif
 
 float SampleSDF(float3 worldPos)
 {
@@ -219,6 +224,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
   // Rotation
   p.RotationOffset += p.RotationSpeed * GPUPartDeltaTime;
+
+#if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
+  // Write current position into trail ring buffer
+  {
+    uint trailBase = idx * GPUPartMaxTrailPoints;
+    uint trailSlot = GPUPartTrailWriteIndex % GPUPartMaxTrailPoints;
+    gpuTrailPositions[trailBase + trailSlot] = float4(p.Position, p.Size);
+  }
+#endif
 
   gpuParticlesCurrent[idx] = p;
 }

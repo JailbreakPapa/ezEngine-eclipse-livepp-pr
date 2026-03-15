@@ -1,6 +1,7 @@
 #include <RendererCore/RendererCorePCH.h>
 
 #include <RendererCore/Lights/ClusteredDataProvider.h>
+#include <RendererCore/Lights/ScreenSpaceShadowDataProvider.h>
 #include <RendererCore/Lights/SSRDataProvider.h>
 #include <RendererCore/Pipeline/Passes/DeferredLightingPass.h>
 #include <RendererCore/Pipeline/View.h>
@@ -94,6 +95,19 @@ void ezDeferredLightingPass::Execute(const ezRenderViewContext& renderViewContex
     if (pSSRData != nullptr && !pSSRData->m_hSSRTexture.IsInvalidated())
     {
       pSSRData->BindResources(renderViewContext.m_pRenderContext);
+    }
+  }
+
+  // Bind screen-space shadow data (if available)
+  {
+    auto pSSSProvider = GetPipeline()->GetFrameDataProvider<ezScreenSpaceShadowDataProvider>();
+    if (pSSSProvider != nullptr)
+    {
+      auto pSSSData = pSSSProvider->GetData(renderViewContext);
+      if (pSSSData != nullptr)
+      {
+        pSSSData->BindResources(renderViewContext.m_pRenderContext);
+      }
     }
   }
 

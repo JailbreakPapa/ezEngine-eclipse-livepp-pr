@@ -58,7 +58,6 @@ protected:
 
   bool m_bTranslatePinName = true;
 
-private:
   bool m_bIsActive = true;
 
   const ezVisualGraphPin* m_pPin = nullptr;

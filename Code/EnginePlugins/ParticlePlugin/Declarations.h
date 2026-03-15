@@ -227,6 +227,26 @@ EZ_DECLARE_REFLECTABLE_TYPE(EZ_PARTICLEPLUGIN_DLL, ezParticleOutOfBoundsMode);
 
 //////////////////////////////////////////////////////////////////////////
 
+/// Render type for GPU particles
+struct EZ_PARTICLEPLUGIN_DLL ezGPUParticleRenderType
+{
+  using StorageType = ezUInt8;
+
+  enum Enum
+  {
+    Billboard,       ///< Camera-facing billboard quads
+    Point,           ///< Single-pixel points
+    VelocityAligned, ///< Quads stretched along velocity direction
+    Trail,           ///< Ribbon trails following particle paths
+
+    Default = Billboard
+  };
+};
+
+EZ_DECLARE_REFLECTABLE_TYPE(EZ_PARTICLEPLUGIN_DLL, ezGPUParticleRenderType);
+
+//////////////////////////////////////////////////////////////////////////
+
 struct ezParticleEffectFloatParam
 {
   EZ_DECLARE_POD_TYPE();

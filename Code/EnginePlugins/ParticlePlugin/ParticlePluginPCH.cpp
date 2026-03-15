@@ -73,6 +73,15 @@ EZ_END_STATIC_REFLECTED_ENUM;
 
 //////////////////////////////////////////////////////////////////////////
 
+EZ_BEGIN_STATIC_REFLECTED_ENUM(ezGPUParticleRenderType, 1)
+  EZ_ENUM_CONSTANT(ezGPUParticleRenderType::Billboard),
+  EZ_ENUM_CONSTANT(ezGPUParticleRenderType::Point),
+  EZ_ENUM_CONSTANT(ezGPUParticleRenderType::VelocityAligned),
+  EZ_ENUM_CONSTANT(ezGPUParticleRenderType::Trail),
+EZ_END_STATIC_REFLECTED_ENUM;
+
+//////////////////////////////////////////////////////////////////////////
+
 // clang-format on
 
 EZ_STATICLINK_LIBRARY(ParticlePlugin)
@@ -81,16 +90,25 @@ EZ_STATICLINK_LIBRARY(ParticlePlugin)
     return;
 
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_AttractToPosition);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Bounds);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_ColorGradient);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_ConditionalKill);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_ConformToSphere);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Expression);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_FadeOut);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Flies);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Gravity);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_If);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_NoiseForce);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Opacity);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_PullAlong);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Raycast);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Remap);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_SizeCurve);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Switch);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleBehavior_Velocity);
+  EZ_STATICLINK_REFERENCE(ParticlePlugin_Behavior_ParticleConditionalCommon);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Components_ParticleComponent);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Components_ParticleFinisherComponent);
   EZ_STATICLINK_REFERENCE(ParticlePlugin_Effect_ParticleEffectDescriptor);

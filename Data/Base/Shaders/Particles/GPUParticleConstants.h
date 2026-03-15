@@ -47,4 +47,9 @@ CONSTANT_BUFFER(ezGPUParticleConstants, 4)
   FLOAT4(GPUPartColorOverLifeEnd);
 
   MAT4(GPUPartObjectToWorldMatrix);
+
+  UINT1(GPUPartMaxTrailPoints);
+  UINT1(GPUPartTrailWriteIndex);
+  FLOAT1(GPUPartVelocityStretch);
+  UINT1(GPUPartPadding1);
 };

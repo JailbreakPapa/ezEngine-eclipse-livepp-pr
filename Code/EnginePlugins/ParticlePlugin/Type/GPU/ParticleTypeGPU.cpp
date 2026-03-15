@@ -2,6 +2,8 @@
 
 #include <Foundation/Math/Color16f.h>
 #include <Foundation/Math/Float16.h>
+#include <Core/Interfaces/WindWorldModule.h>
+#include <Core/World/World.h>
 #include <ParticlePlugin/Behavior/ParticleBehavior_Raycast.h>
 #include <ParticlePlugin/Effect/ParticleEffectInstance.h>
 #include <ParticlePlugin/System/ParticleSystemInstance.h>
@@ -21,6 +23,7 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleTypeGPUFactory, 1, ezRTTIDefaultAlloca
   {
     EZ_MEMBER_PROPERTY("MaxParticles", m_uiMaxParticles)->AddAttributes(new ezDefaultValueAttribute(65536), new ezClampValueAttribute(1024, 1048576)),
     EZ_ENUM_MEMBER_PROPERTY("RenderMode", ezParticleTypeRenderMode, m_RenderMode),
+    EZ_ENUM_MEMBER_PROPERTY("GPURenderType", ezGPUParticleRenderType, m_GPURenderType),
     EZ_MEMBER_PROPERTY("Texture", m_sTexture)->AddAttributes(new ezAssetBrowserAttribute("CompatibleAsset_Texture_2D")),
     EZ_MEMBER_PROPERTY("Gravity", m_fGravity)->AddAttributes(new ezDefaultValueAttribute(9.81f)),
     EZ_MEMBER_PROPERTY("Drag", m_fDragCoefficient)->AddAttributes(new ezDefaultValueAttribute(0.0f), new ezClampValueAttribute(0.0f, 10.0f)),
@@ -33,6 +36,8 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleTypeGPUFactory, 1, ezRTTIDefaultAlloca
     EZ_MEMBER_PROPERTY("CollisionThickness", m_fCollisionThickness)->AddAttributes(new ezDefaultValueAttribute(0.5f), new ezClampValueAttribute(0.01f, 5.0f)),
     EZ_MEMBER_PROPERTY("ColorStart", m_ColorStart)->AddAttributes(new ezDefaultValueAttribute(ezColor::White)),
     EZ_MEMBER_PROPERTY("ColorEnd", m_ColorEnd)->AddAttributes(new ezDefaultValueAttribute(ezColor(1, 1, 1, 0))),
+    EZ_MEMBER_PROPERTY("MaxTrailPoints", m_uiMaxTrailPoints)->AddAttributes(new ezDefaultValueAttribute(16), new ezClampValueAttribute(4, 64)),
+    EZ_MEMBER_PROPERTY("VelocityStretch", m_fVelocityStretch)->AddAttributes(new ezDefaultValueAttribute(1.0f), new ezClampValueAttribute(0.0f, 20.0f)),
   }
   EZ_END_PROPERTIES;
 }
@@ -65,11 +70,15 @@ void ezParticleTypeGPUFactory::CopyTypeProperties(ezParticleType* pObject, bool 
   pType->m_fCollisionThickness = m_fCollisionThickness;
   pType->m_ColorStart = m_ColorStart;
   pType->m_ColorEnd = m_ColorEnd;
+  pType->m_GPURenderType = m_GPURenderType;
+  pType->m_uiMaxTrailPoints = m_uiMaxTrailPoints;
+  pType->m_fVelocityStretch = m_fVelocityStretch;
 }
 
 enum class TypeGPUVersion
 {
   Version_1 = 1,
+  Version_2_RenderType,
 
   Version_Count,
   Version_Current = Version_Count - 1
@@ -94,6 +103,11 @@ void ezParticleTypeGPUFactory::Save(ezStreamWriter& inout_stream) const
   inout_stream << m_fCollisionThickness;
   inout_stream << m_ColorStart;
   inout_stream << m_ColorEnd;
+
+  // Version_2_RenderType
+  inout_stream << m_GPURenderType;
+  inout_stream << m_uiMaxTrailPoints;
+  inout_stream << m_fVelocityStretch;
 }
 
 void ezParticleTypeGPUFactory::Load(ezStreamReader& inout_stream)
@@ -117,6 +131,13 @@ void ezParticleTypeGPUFactory::Load(ezStreamReader& inout_stream)
   inout_stream >> m_fCollisionThickness;
   inout_stream >> m_ColorStart;
   inout_stream >> m_ColorEnd;
+
+  if (uiVersion >= (ezUInt8)TypeGPUVersion::Version_2_RenderType)
+  {
+    inout_stream >> m_GPURenderType;
+    inout_stream >> m_uiMaxTrailPoints;
+    inout_stream >> m_fVelocityStretch;
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -146,15 +167,14 @@ void ezParticleTypeGPU::EnsureGPUBuffers() const
 
   ezGALDevice* pDevice = ezGALDevice::GetDefaultDevice();
 
-  // Particle structured buffers (ping-pong)
+  // Particle structured buffer
   {
     ezGALBufferCreationDescription desc;
     desc.m_uiStructSize = sizeof(ezGPUParticle);
     desc.m_uiTotalSize = m_uiMaxGPUParticles * desc.m_uiStructSize;
     desc.m_BufferFlags = ezGALBufferUsageFlags::StructuredBuffer | ezGALBufferUsageFlags::ShaderResource | ezGALBufferUsageFlags::UnorderedAccess;
     desc.m_ResourceAccess.m_bImmutable = false;
-    m_hParticleBufferA = pDevice->CreateBuffer(desc);
-    m_hParticleBufferB = pDevice->CreateBuffer(desc);
+    m_hParticleBuffer = pDevice->CreateBuffer(desc);
   }
 
   // Counter + freelist buffer (ByteAddressBuffer)
@@ -167,8 +187,20 @@ void ezParticleTypeGPU::EnsureGPUBuffers() const
     m_hCounterBuffer = pDevice->CreateBuffer(desc);
   }
 
+  // Trail position buffer (only for Trail render type)
+  if (m_GPURenderType == ezGPUParticleRenderType::Trail)
+  {
+    ezGALBufferCreationDescription desc;
+    desc.m_uiStructSize = sizeof(ezVec4);
+    desc.m_uiTotalSize = m_uiMaxGPUParticles * m_uiMaxTrailPoints * desc.m_uiStructSize;
+    desc.m_BufferFlags = ezGALBufferUsageFlags::StructuredBuffer | ezGALBufferUsageFlags::ShaderResource | ezGALBufferUsageFlags::UnorderedAccess;
+    desc.m_ResourceAccess.m_bImmutable = false;
+    m_hTrailPositionBuffer = pDevice->CreateBuffer(desc);
+  }
+
   m_bGPUBuffersCreated = true;
   m_uiGPUEmitIndex = 0;
+  m_uiTrailWriteIndex = 0;
 }
 
 void ezParticleTypeGPU::DestroyGPUBuffers()
@@ -178,16 +210,16 @@ void ezParticleTypeGPU::DestroyGPUBuffers()
 
   ezGALDevice* pDevice = ezGALDevice::GetDefaultDevice();
 
-  if (!m_hParticleBufferA.IsInvalidated())
-    pDevice->DestroyBuffer(m_hParticleBufferA);
-  if (!m_hParticleBufferB.IsInvalidated())
-    pDevice->DestroyBuffer(m_hParticleBufferB);
+  if (!m_hParticleBuffer.IsInvalidated())
+    pDevice->DestroyBuffer(m_hParticleBuffer);
   if (!m_hCounterBuffer.IsInvalidated())
     pDevice->DestroyBuffer(m_hCounterBuffer);
+  if (!m_hTrailPositionBuffer.IsInvalidated())
+    pDevice->DestroyBuffer(m_hTrailPositionBuffer);
 
-  m_hParticleBufferA.Invalidate();
-  m_hParticleBufferB.Invalidate();
+  m_hParticleBuffer.Invalidate();
   m_hCounterBuffer.Invalidate();
+  m_hTrailPositionBuffer.Invalidate();
   m_bGPUBuffersCreated = false;
 }
 
@@ -255,10 +287,8 @@ void ezParticleTypeGPU::ExtractTypeRenderData(ezMsgExtractRenderData& ref_msg, c
   pRenderData->m_RenderMode = (ezParticleTypeRenderMode::Enum)m_RenderMode;
   pRenderData->m_uiMaxParticles = m_uiMaxGPUParticles;
 
-  pRenderData->m_hParticleBufferRead = m_bUsePingA ? m_hParticleBufferA : m_hParticleBufferB;
-  pRenderData->m_hParticleBufferWrite = m_bUsePingA ? m_hParticleBufferB : m_hParticleBufferA;
+  pRenderData->m_hParticleBuffer = m_hParticleBuffer;
   pRenderData->m_hCounterBuffer = m_hCounterBuffer;
-  pRenderData->m_bUsePingA = m_bUsePingA;
 
   pRenderData->m_NewParticles = newParticles;
   pRenderData->m_uiEmitStartIndex = m_uiGPUEmitIndex;
@@ -275,20 +305,31 @@ void ezParticleTypeGPU::ExtractTypeRenderData(ezMsgExtractRenderData& ref_msg, c
   pRenderData->m_ColorStart = m_ColorStart;
   pRenderData->m_ColorEnd = m_ColorEnd;
 
+  pRenderData->m_uiGPURenderType = m_GPURenderType;
+  pRenderData->m_uiMaxTrailPoints = m_uiMaxTrailPoints;
+  pRenderData->m_hTrailPositionBuffer = m_hTrailPositionBuffer;
+  pRenderData->m_fVelocityStretch = m_fVelocityStretch;
+
   ref_msg.AddRenderData(pRenderData, ezDefaultRenderDataCategories::LitTransparent, ezRenderData::Caching::Never);
 
   // Register with the data provider so the compute pass can simulate this system
   {
     ezGPUParticleSystemInfo sysInfo;
-    sysInfo.m_hParticleBufferRead = pRenderData->m_hParticleBufferRead;
-    sysInfo.m_hParticleBufferWrite = pRenderData->m_hParticleBufferWrite;
-    sysInfo.m_hCounterBuffer = pRenderData->m_hCounterBuffer;
-    sysInfo.m_uiMaxParticles = pRenderData->m_uiMaxParticles;
+    sysInfo.m_hParticleBuffer = m_hParticleBuffer;
+    sysInfo.m_hCounterBuffer = m_hCounterBuffer;
+    sysInfo.m_uiMaxParticles = m_uiMaxGPUParticles;
     sysInfo.m_NewParticles = newParticles;
     sysInfo.m_uiEmitStartIndex = m_uiGPUEmitIndex;
     sysInfo.m_fGravity = m_fGravity;
     sysInfo.m_fDragCoefficient = m_fDragCoefficient;
     sysInfo.m_fWindStrength = m_fWindStrength;
+
+    // Sample wind at the effect's position
+    if (const ezWindWorldModuleInterface* pWind = GetOwnerEffect()->GetWorld()->GetModuleReadOnly<ezWindWorldModuleInterface>())
+    {
+      sysInfo.m_vWindDirection = pWind->GetWindAt(instanceTransform.m_vPosition);
+    }
+
     sysInfo.m_bEnableDepthCollision = m_bEnableDepthCollision;
     sysInfo.m_bEnableSDFCollision = m_bEnableSDFCollision;
     sysInfo.m_uiCollisionReaction = m_CollisionReaction;
@@ -297,14 +338,24 @@ void ezParticleTypeGPU::ExtractTypeRenderData(ezMsgExtractRenderData& ref_msg, c
     sysInfo.m_fCollisionThickness = m_fCollisionThickness;
     sysInfo.m_ColorStart = m_ColorStart;
     sysInfo.m_ColorEnd = m_ColorEnd;
+
+    sysInfo.m_uiGPURenderType = m_GPURenderType;
+    sysInfo.m_uiMaxTrailPoints = m_uiMaxTrailPoints;
+    sysInfo.m_uiTrailWriteIndex = m_uiTrailWriteIndex;
+    sysInfo.m_hTrailPositionBuffer = m_hTrailPositionBuffer;
+    sysInfo.m_fVelocityStretch = m_fVelocityStretch;
+
     ezGPUParticleDataProvider::QueueSystem(sysInfo);
   }
 
   // Advance emit index (wrap around)
   m_uiGPUEmitIndex = (m_uiGPUEmitIndex + numParticles) % m_uiMaxGPUParticles;
 
-  // Flip ping-pong for next frame
-  m_bUsePingA = !m_bUsePingA;
+  // Advance trail write index for trail types
+  if (m_GPURenderType == ezGPUParticleRenderType::Trail)
+  {
+    m_uiTrailWriteIndex++;
+  }
 }
 
 

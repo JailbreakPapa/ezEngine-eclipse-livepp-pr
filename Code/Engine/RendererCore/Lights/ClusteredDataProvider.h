@@ -39,6 +39,8 @@ public:
   float m_fFogTemporalBlendWeight = 0.05f;
   ezUInt32 m_uiNumFogVolumes = 0;
 
+  ezVec3 m_vBrightestDirectionalLightDirection = ezVec3(0, 0, -1);
+
   void BindResources(ezRenderContext* pRenderContext);
 };
 

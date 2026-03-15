@@ -3,6 +3,7 @@ ALL
 
 [PERMUTATIONS]
 CAMERA_MODE
+GPU_PARTICLE_TYPE
 
 [COMPUTESHADER]
 
@@ -29,6 +30,10 @@ struct ezGPUParticle
 RWStructuredBuffer<ezGPUParticle> gpuParticlesCurrent;
 RWByteAddressBuffer gpuParticleCounters;
 
+#if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
+RWStructuredBuffer<float4> gpuTrailPositions;
+#endif
+
 [numthreads(GPU_PARTICLE_EMIT_THREAD_GROUP_SIZE, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
@@ -46,4 +51,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
   // Increment alive counter
   uint unused;
   gpuParticleCounters.InterlockedAdd(0, 1, unused);
+
+#if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
+  // Initialize all trail slots to the spawn position
+  float3 spawnPos = gpuParticlesCurrent[idx].Position;
+  float spawnSize = gpuParticlesCurrent[idx].Size;
+  uint trailBase = idx * GPUPartMaxTrailPoints;
+  for (uint t = 0; t < GPUPartMaxTrailPoints; ++t)
+  {
+    gpuTrailPositions[trailBase + t] = float4(spawnPos, spawnSize);
+  }
+#endif
 }

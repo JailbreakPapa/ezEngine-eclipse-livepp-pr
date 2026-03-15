@@ -207,7 +207,7 @@ struct EZ_SHADER_STRUCT ezPerFogVolumeData
     UINT1(VSMEnabled);
 
     UINT1(NumFogVolumes);
-    UINT1(ClusteredPadding0);
+    UINT1(ScreenSpaceShadowEnabled);
 };
 
 #define NUM_CLUSTERS_X 16

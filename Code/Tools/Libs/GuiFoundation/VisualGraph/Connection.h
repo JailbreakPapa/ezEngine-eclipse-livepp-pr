@@ -33,6 +33,7 @@ public:
   const QPointF& GetOutPos() const { return m_OutPoint; }
 
   bool m_bAdjacentNodeSelected = false;
+  bool m_bIsActive = false;
 
   virtual void ExtendContextMenu(QMenu& ref_menu) {}
 

@@ -41,6 +41,16 @@ ezGPUParticlePass::~ezGPUParticlePass()
 
 bool ezGPUParticlePass::GetRenderTargetDescriptions(const ezView& view, const ezArrayPtr<ezGALTextureCreationDescription* const> inputs, ezArrayPtr<ezGALTextureCreationDescription> outputs)
 {
+  if (inputs[m_PinColor.m_uiInputIndex])
+  {
+    outputs[m_PinColor.m_uiOutputIndex] = *inputs[m_PinColor.m_uiInputIndex];
+  }
+  else
+  {
+    ezLog::Error("No color input connected to pass '{0}'!", GetName());
+    return false;
+  }
+
   return true;
 }
 
@@ -133,15 +143,62 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
   // ---- Per-system simulation ----
   for (const auto& sys : pData->m_Systems)
   {
+    // Skip systems with invalid buffers
+    if (sys.m_hParticleBuffer.IsInvalidated() || sys.m_hCounterBuffer.IsInvalidated() || sys.m_uiMaxParticles == 0)
+      continue;
+
+    // Helper to set GPU_PARTICLE_TYPE permutation using string literals
+    auto SetGPUParticleType = [&]() {
+      switch (sys.m_uiGPURenderType)
+      {
+        case 1: renderViewContext.m_pRenderContext->SetShaderPermutationVariable("GPU_PARTICLE_TYPE", "GPU_PARTICLE_TYPE_POINT"); break;
+        case 2: renderViewContext.m_pRenderContext->SetShaderPermutationVariable("GPU_PARTICLE_TYPE", "GPU_PARTICLE_TYPE_VELOCITY_ALIGNED"); break;
+        case 3: renderViewContext.m_pRenderContext->SetShaderPermutationVariable("GPU_PARTICLE_TYPE", "GPU_PARTICLE_TYPE_TRAIL"); break;
+        default: renderViewContext.m_pRenderContext->SetShaderPermutationVariable("GPU_PARTICLE_TYPE", "GPU_PARTICLE_TYPE_BILLBOARD"); break;
+      }
+    };
+
     // ---- Emit new particles ----
-    if (sys.m_NewParticles.GetCount() > 0)
+    if (sys.m_NewParticles.GetCount() > 0 && sys.m_NewParticles.GetPtr() != nullptr)
     {
-      // Upload new particle data to the write buffer
-      renderViewContext.m_pRenderContext->GetCommandEncoder()->UpdateBuffer(
-        sys.m_hParticleBufferWrite,
-        sys.m_uiEmitStartIndex * sizeof(ezGPUParticle),
-        sys.m_NewParticles.ToByteArray(),
-        ezGALUpdateMode::AheadOfTime);
+      // Upload new particle data to the write buffer, handling wrap-around
+      const ezUInt32 uiEmitCount = sys.m_NewParticles.GetCount();
+      const ezUInt32 uiEmitStart = sys.m_uiEmitStartIndex;
+      const ezUInt32 uiMax = sys.m_uiMaxParticles;
+
+      if (uiEmitStart + uiEmitCount <= uiMax)
+      {
+        // No wrap — single upload
+        renderViewContext.m_pRenderContext->GetCommandEncoder()->UpdateBuffer(
+          sys.m_hParticleBuffer,
+          uiEmitStart * sizeof(ezGPUParticle),
+          sys.m_NewParticles.ToByteArray(),
+          ezGALUpdateMode::AheadOfTime);
+      }
+      else
+      {
+        // Wrap-around — split into two uploads
+        const ezUInt32 uiFirstBatch = uiMax - uiEmitStart;
+        const ezUInt32 uiSecondBatch = uiEmitCount - uiFirstBatch;
+
+        if (uiFirstBatch > 0)
+        {
+          renderViewContext.m_pRenderContext->GetCommandEncoder()->UpdateBuffer(
+            sys.m_hParticleBuffer,
+            uiEmitStart * sizeof(ezGPUParticle),
+            ezArrayPtr<const ezUInt8>(reinterpret_cast<const ezUInt8*>(sys.m_NewParticles.GetPtr()), uiFirstBatch * sizeof(ezGPUParticle)),
+            ezGALUpdateMode::AheadOfTime);
+        }
+
+        if (uiSecondBatch > 0)
+        {
+          renderViewContext.m_pRenderContext->GetCommandEncoder()->UpdateBuffer(
+            sys.m_hParticleBuffer,
+            0,
+            ezArrayPtr<const ezUInt8>(reinterpret_cast<const ezUInt8*>(sys.m_NewParticles.GetPtr() + uiFirstBatch), uiSecondBatch * sizeof(ezGPUParticle)),
+            ezGALUpdateMode::AheadOfTime);
+        }
+      }
 
       {
         EZ_PROFILE_SCOPE("GPU Particle Emit");
@@ -151,12 +208,19 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
         cb->GPUPartNumToEmit = sys.m_NewParticles.GetCount();
         cb->GPUPartEmitStartIndex = sys.m_uiEmitStartIndex;
         cb->GPUPartMaxParticles = sys.m_uiMaxParticles;
+        cb->GPUPartMaxTrailPoints = sys.m_uiMaxTrailPoints;
 
         ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
         bindGroup.BindBuffer("ezGPUParticleConstants", m_hConstantBuffer);
-        bindGroup.BindBuffer("gpuParticlesCurrent", sys.m_hParticleBufferWrite);
+        bindGroup.BindBuffer("gpuParticlesCurrent", sys.m_hParticleBuffer);
         bindGroup.BindBuffer("gpuParticleCounters", sys.m_hCounterBuffer);
 
+        if (sys.m_uiGPURenderType == 3 && !sys.m_hTrailPositionBuffer.IsInvalidated()) // Trail
+        {
+          bindGroup.BindBuffer("gpuTrailPositions", sys.m_hTrailPositionBuffer);
+        }
+
+        SetGPUParticleType();
         renderViewContext.m_pRenderContext->BindShader(m_hEmitShader);
 
         ezUInt32 emitGroups = (sys.m_NewParticles.GetCount() + GPU_PARTICLE_EMIT_THREAD_GROUP_SIZE - 1) / GPU_PARTICLE_EMIT_THREAD_GROUP_SIZE;
@@ -175,7 +239,7 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
         cb->GPUPartMaxParticles = sys.m_uiMaxParticles;
         cb->GPUPartGravity = sys.m_fGravity;
         cb->GPUPartDragCoefficient = sys.m_fDragCoefficient;
-        cb->GPUPartWindDirection.Set(1, 0, 0); // TODO: get from wind world module
+        cb->GPUPartWindDirection = sys.m_vWindDirection;
         cb->GPUPartWindStrength = sys.m_fWindStrength;
         cb->GPUPartCollisionBounceFactor = sys.m_fCollisionBounceFactor;
         cb->GPUPartCollisionSlideFactor = sys.m_fCollisionSlideFactor;
@@ -189,11 +253,14 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
         cb->GPUPartInverseViewProjectionMatrix = invVpMat;
         cb->GPUPartColorOverLifeStart.Set(sys.m_ColorStart.r, sys.m_ColorStart.g, sys.m_ColorStart.b, sys.m_ColorStart.a);
         cb->GPUPartColorOverLifeEnd.Set(sys.m_ColorEnd.r, sys.m_ColorEnd.g, sys.m_ColorEnd.b, sys.m_ColorEnd.a);
+        cb->GPUPartMaxTrailPoints = sys.m_uiMaxTrailPoints;
+        cb->GPUPartTrailWriteIndex = sys.m_uiTrailWriteIndex;
+        cb->GPUPartVelocityStretch = sys.m_fVelocityStretch;
       }
 
       ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
       bindGroup.BindBuffer("ezGPUParticleConstants", m_hConstantBuffer);
-      bindGroup.BindBuffer("gpuParticlesCurrent", sys.m_hParticleBufferWrite);
+      bindGroup.BindBuffer("gpuParticlesCurrent", sys.m_hParticleBuffer);
       bindGroup.BindBuffer("gpuParticleCounters", sys.m_hCounterBuffer);
       bindGroup.BindTexture("SceneDepth", pDepthInput->m_TextureHandle);
 
@@ -202,6 +269,12 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
         bindGroup.BindTexture("SDFTexture", m_hSDFTexture);
       }
 
+      if (sys.m_uiGPURenderType == 3 && !sys.m_hTrailPositionBuffer.IsInvalidated()) // Trail
+      {
+        bindGroup.BindBuffer("gpuTrailPositions", sys.m_hTrailPositionBuffer);
+      }
+
+      SetGPUParticleType();
       renderViewContext.m_pRenderContext->BindShader(m_hSimulateShader);
 
       ezUInt32 simGroups = (sys.m_uiMaxParticles + GPU_PARTICLE_SIM_THREAD_GROUP_SIZE - 1) / GPU_PARTICLE_SIM_THREAD_GROUP_SIZE;

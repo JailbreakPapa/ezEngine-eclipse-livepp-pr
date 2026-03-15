@@ -441,6 +441,7 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
     pData->m_FogVolumeParams.CopyFrom(m_TempFogVolumeParams);
 
     pData->m_uiBrightestDirectionalLightIndex = uiBrightestDirectionalLightIndex;
+    pData->m_vBrightestDirectionalLightDirection = vBrightestDirectionalLightDirection;
     pData->m_uiSkyIrradianceIndex = view.GetWorld()->GetIndex();
     pData->m_cameraUsageHint = view.GetCameraUsageHint();
   }

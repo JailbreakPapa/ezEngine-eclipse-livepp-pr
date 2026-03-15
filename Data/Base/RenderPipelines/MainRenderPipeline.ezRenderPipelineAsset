@@ -938,8 +938,48 @@ o
 	{
 		Uuid %Source{u4{18256155234598274697,4621777589978447158}}
 		s %SourcePin{"Color"}
+		Uuid %Target{u4{5550000100010001001,6660000100010001001}}
+		s %TargetPin{"Color"}
+	}
+}
+o
+{
+	Uuid %id{u4{5550000100010001001,6660000100010001001}}
+	s %t{"ezGPUParticlePass"}
+	u3 %v{1}
+	p
+	{
+		b %Active{1}
+		Uuid %Color{u4{5550000200020002002,6660000200020002002}}
+		Uuid %DepthInput{u4{5550000300030003003,6660000300030003003}}
+		s %Name{""}
+		Vec2 %Node::Pos{f{0x0947BEC3,0xBBCA83C3}}
+	}
+}
+o
+{
+	Uuid %id{u4{5550000400040004004,6660000400040004004}}
+	s %t{"ezDocumentObject_ConnectionBase"}
+	u3 %v{1}
+	p
+	{
+		Uuid %Source{u4{5550000100010001001,6660000100010001001}}
+		s %SourcePin{"Color"}
 		Uuid %Target{u4{15217573783965038497,4632251886641546667}}
 		s %TargetPin{"Color"}
+	}
+}
+o
+{
+	Uuid %id{u4{5550000500050005005,6660000500050005005}}
+	s %t{"ezDocumentObject_ConnectionBase"}
+	u3 %v{1}
+	p
+	{
+		Uuid %Source{u4{17158037350687856310,5273637871777512332}}
+		s %SourcePin{"Output"}
+		Uuid %Target{u4{5550000100010001001,6660000100010001001}}
+		s %TargetPin{"DepthInput"}
 	}
 }
 o
@@ -1093,6 +1133,9 @@ o
 			Uuid{u4{8627810538658388397,5500293551648370803}}
 			Uuid{u4{2626280249816366257,4639611151180836031}}
 			Uuid{u4{3581332538620886946,5271200341837808287}}
+			Uuid{u4{5550000100010001001,6660000100010001001}}
+			Uuid{u4{5550000400040004004,6660000400040004004}}
+			Uuid{u4{5550000500050005005,6660000500050005005}}
 		}
 	}
 }
@@ -1431,9 +1474,40 @@ o
 	u3 %v{1}
 	p{}
 }
+o
+{
+	Uuid %id{u4{5550000200020002002,6660000200020002002}}
+	s %t{"ezRenderPipelineNodePassThroughPin"}
+	u3 %v{1}
+	p{}
+}
+o
+{
+	Uuid %id{u4{5550000300030003003,6660000300030003003}}
+	s %t{"ezRenderPipelineNodeInputPin"}
+	u3 %v{1}
+	p{}
+}
 }
 Types
 {
+o
+{
+	Uuid %id{u4{5550000600060006006,6660000600060006006}}
+	s %t{"ezReflectedTypeDescriptor"}
+	u3 %v{1}
+	p
+	{
+		VarArray %Attributes{}
+		s %Flags{"ezTypeFlags::Class|ezTypeFlags::Minimal"}
+		VarArray %Functions{}
+		s %ParentTypeName{"ezRenderPipelinePass"}
+		s %PluginName{"Static"}
+		VarArray %Properties{}
+		s %TypeName{"ezGPUParticlePass"}
+		u3 %TypeVersion{1}
+	}
+}
 o
 {
 	Uuid %id{u4{13021126745212556623,225614834054553209}}

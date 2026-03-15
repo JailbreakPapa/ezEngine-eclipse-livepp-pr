@@ -21,10 +21,8 @@ public:
   ezUInt32 m_uiMaxParticles = 0;
 
   // GPU buffer handles
-  ezGALBufferHandle m_hParticleBufferRead;
-  ezGALBufferHandle m_hParticleBufferWrite;
+  ezGALBufferHandle m_hParticleBuffer;
   ezGALBufferHandle m_hCounterBuffer;
-  bool m_bUsePingA = true;
 
   // Emission data
   ezArrayPtr<ezGPUParticle> m_NewParticles;
@@ -42,6 +40,12 @@ public:
   float m_fCollisionThickness = 0.5f;
   ezColor m_ColorStart = ezColor::White;
   ezColor m_ColorEnd = ezColor(1, 1, 1, 0);
+
+  // Multi-type rendering
+  ezUInt8 m_uiGPURenderType = 0;
+  ezUInt32 m_uiMaxTrailPoints = 16;
+  ezGALBufferHandle m_hTrailPositionBuffer;
+  float m_fVelocityStretch = 1.0f;
 };
 
 class EZ_PARTICLEPLUGIN_DLL ezGPUParticleRenderer final : public ezParticleRenderer
