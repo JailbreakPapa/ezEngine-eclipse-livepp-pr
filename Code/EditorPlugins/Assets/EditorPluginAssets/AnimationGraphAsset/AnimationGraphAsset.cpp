@@ -1,5 +1,6 @@
 #include <EditorPluginAssets/EditorPluginAssetsPCH.h>
 
+#include <EditorEngineProcessFramework/IPC/SyncObject.h>
 #include <EditorPluginAssets/AnimationGraphAsset/AnimationGraphAsset.h>
 #include <EditorPluginAssets/AnimationGraphAsset/AnimationGraphQt.h>
 #include <Foundation/Math/ColorScheme.h>
@@ -19,10 +20,14 @@ EZ_END_DYNAMIC_REFLECTED_TYPE;
 EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezAnimationGraphNodePin, 1, ezRTTINoAllocator)
 EZ_END_DYNAMIC_REFLECTED_TYPE;
 
-EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezAnimationGraphAssetProperties, 1, ezRTTIDefaultAllocator<ezAnimationGraphAssetProperties>)
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezAnimGraphStateMachinePin, 1, ezRTTINoAllocator)
+EZ_END_DYNAMIC_REFLECTED_TYPE;
+
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezAnimationGraphAssetProperties, 2, ezRTTIDefaultAllocator<ezAnimationGraphAssetProperties>)
 {
   EZ_BEGIN_PROPERTIES
   {
+    EZ_MEMBER_PROPERTY("PreviewMesh", m_sPreviewMesh)->AddAttributes(new ezAssetBrowserAttribute("CompatibleAsset_Mesh_Skinned", ezDependencyFlags::Thumbnail)),
     EZ_ARRAY_MEMBER_PROPERTY("IncludeGraphs", m_IncludeGraphs)->AddAttributes(new ezAssetBrowserAttribute("CompatibleAsset_Keyframe_Graph")),
     EZ_ARRAY_MEMBER_PROPERTY("AnimationClipMapping", m_AnimationClipMapping),
   }
@@ -384,12 +389,12 @@ void ezAnimationGraphNodeManager::CreateStatePins(const ezDocumentObject* pObjec
   // Any-state node has no input pin (nothing transitions *to* "any state")
   if (!bIsAnyState)
   {
-    auto pInPin = EZ_DEFAULT_NEW(ezAnimationGraphNodePin, ezVisualGraphPin::Type::Input, "Enter", stateColor, pObject);
+    auto pInPin = EZ_DEFAULT_NEW(ezAnimGraphStateMachinePin, ezVisualGraphPin::Type::Input, "Enter", stateColor, pObject);
     pInPin->m_DataType = ezAnimGraphPin::Invalid;
     ref_node.m_Inputs.PushBack(pInPin);
   }
 
-  auto pOutPin = EZ_DEFAULT_NEW(ezAnimationGraphNodePin, ezVisualGraphPin::Type::Output, "Exit", stateColor, pObject);
+  auto pOutPin = EZ_DEFAULT_NEW(ezAnimGraphStateMachinePin, ezVisualGraphPin::Type::Output, "Exit", stateColor, pObject);
   pOutPin->m_DataType = ezAnimGraphPin::Invalid;
   ref_node.m_Outputs.PushBack(pOutPin);
 }
@@ -542,9 +547,69 @@ const ezDocumentObject* ezAnimationGraphNodeManager::GetInitialState(const ezUui
 // ezAnimationGraphAssetDocument
 
 ezAnimationGraphAssetDocument::ezAnimationGraphAssetDocument(ezStringView sDocumentPath)
-  : ezSimpleAssetDocument<ezAnimationGraphAssetProperties>(EZ_DEFAULT_NEW(ezAnimationGraphNodeManager), sDocumentPath, ezAssetDocEngineConnection::None)
+  : ezSimpleAssetDocument<ezAnimationGraphAssetProperties>(EZ_DEFAULT_NEW(ezAnimationGraphNodeManager), sDocumentPath, ezAssetDocEngineConnection::Simple, true)
 {
   m_pObjectAccessor = EZ_DEFAULT_NEW(ezVisualGraphCommandAccessor, GetCommandHistory());
+}
+
+void ezAnimationGraphAssetDocument::SetRenderBones(bool bEnable)
+{
+  if (m_bRenderBones == bEnable)
+    return;
+
+  m_bRenderBones = bEnable;
+
+  ezAnimationGraphAssetEvent e;
+  e.m_pDocument = this;
+  e.m_Type = ezAnimationGraphAssetEvent::RenderStateChanged;
+  m_Events.Broadcast(e);
+}
+
+void ezAnimationGraphAssetDocument::SetRenderPreviewMesh(bool bEnable)
+{
+  if (m_bRenderPreviewMesh == bEnable)
+    return;
+
+  m_bRenderPreviewMesh = bEnable;
+
+  ezAnimationGraphAssetEvent e;
+  e.m_pDocument = this;
+  e.m_Type = ezAnimationGraphAssetEvent::RenderStateChanged;
+  m_Events.Broadcast(e);
+}
+
+void ezAnimationGraphAssetDocument::SetCommonAssetUiState(ezCommonAssetUiState::Enum state, double value)
+{
+  if (state == ezCommonAssetUiState::SimulationSpeed)
+  {
+    m_fSimulationSpeed = static_cast<float>(value);
+  }
+
+  SUPER::SetCommonAssetUiState(state, value);
+}
+
+double ezAnimationGraphAssetDocument::GetCommonAssetUiState(ezCommonAssetUiState::Enum state) const
+{
+  if (state == ezCommonAssetUiState::SimulationSpeed)
+  {
+    return m_fSimulationSpeed;
+  }
+
+  return SUPER::GetCommonAssetUiState(state);
+}
+
+ezTransformStatus ezAnimationGraphAssetDocument::InternalCreateThumbnail(const ThumbnailInfo& thumbnailInfo)
+{
+  if (!GetProperties()->m_sPreviewMesh.IsEmpty())
+  {
+    ezSimpleDocumentConfigMsgToEngine msg;
+    msg.m_sWhatToDo = "PreviewMesh";
+    msg.m_sPayload = GetProperties()->m_sPreviewMesh;
+    SendMessageToEngine(&msg);
+  }
+
+  ezStatus status = ezAssetDocument::RemoteCreateThumbnail(thumbnailInfo);
+  return status;
 }
 
 ezTransformStatus ezAnimationGraphAssetDocument::InternalTransformAsset(ezStreamWriter& stream, ezStringView sOutputTag, const ezPlatformProfile* pAssetProfile, const ezAssetFileHeader& AssetHeader, ezBitflags<ezTransformFlags> transformFlags)
@@ -585,11 +650,18 @@ ezTransformStatus ezAnimationGraphAssetDocument::InternalTransformAsset(ezStream
 
   ezMap<const ezDocumentObject*, ezAnimGraphNode*> docNodeToRuntimeNode;
 
+  // Build debug index -> document GUID mapping for editor visualization
+  m_DebugIndexToGuid.Clear();
+
   // create all nodes in the ezAnimGraph
   {
+    ezUInt32 uiDebugIdx = 0;
     for (const ezDocumentObject* pNode : rootBlendTreeNodes)
     {
       ezAnimGraphNode* pNewNode = animGraph.AddNode(pNode->GetType()->GetAllocator()->Allocate<ezAnimGraphNode>());
+      pNewNode->SetDebugIndex(uiDebugIdx);
+      m_DebugIndexToGuid.PushBack(pNode->GetGuid());
+      ++uiDebugIdx;
 
       // copy all the non-hidden properties
       ezToolsSerializationUtils::CopyProperties(pNode, GetObjectManager(), pNewNode, pNewNode->GetDynamicRTTI(), [](const ezAbstractProperty* p)

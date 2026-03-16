@@ -21,6 +21,7 @@ public:
   virtual void Deinitialize() override;
 
 private:
+  void UpdateResetComponents(const ezWorldModule::UpdateContext& context);
   void Update(const ezWorldModule::UpdateContext& context);
   void ResourceEvent(const ezResourceEvent& e);
 
@@ -70,6 +71,9 @@ public:
   /// otherwise the running animation playback may produce weird results.
   void SetAnimationClipOverride(ezStringView sAnimationName, ezStringView sAnimationClipResource); // [ scriptable ]
 
+  const ezAnimController& GetAnimController() const { return m_AnimController; }
+  ezAnimController& GetAnimController() { return m_AnimController; }
+
 protected:
   void Update();
 
@@ -79,5 +83,6 @@ protected:
   ezAnimController m_AnimController;
   ezAnimPoseGenerator m_PoseGenerator;
 
+  
   ezTime m_ElapsedTimeSinceUpdate = ezTime::MakeZero();
 };

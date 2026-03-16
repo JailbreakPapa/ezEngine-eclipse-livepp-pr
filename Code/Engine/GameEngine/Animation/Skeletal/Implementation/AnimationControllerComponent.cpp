@@ -177,12 +177,22 @@ ezAnimationControllerComponentManager::ezAnimationControllerComponentManager(ezW
 
 void ezAnimationControllerComponentManager::Initialize()
 {
-  auto desc = EZ_CREATE_MODULE_UPDATE_FUNCTION_DESC(ezAnimationControllerComponentManager::Update, this);
-  desc.m_bOnlyUpdateWhenSimulating = true;
-  desc.m_Phase = ezWorldUpdatePhase::Async;
-  desc.m_uiAsyncPhaseBatchSize = 2;
+  // Pre-async phase: handles component resets (requires write access)
+  {
+    auto desc = EZ_CREATE_MODULE_UPDATE_FUNCTION_DESC(ezAnimationControllerComponentManager::UpdateResetComponents, this);
+    desc.m_bOnlyUpdateWhenSimulating = true;
+    desc.m_Phase = ezWorldUpdatePhase::PreAsync;
+    this->RegisterUpdateFunction(desc);
+  }
 
-  this->RegisterUpdateFunction(desc);
+  // Async phase: handles normal component updates (read-only, parallelizable)
+  {
+    auto desc = EZ_CREATE_MODULE_UPDATE_FUNCTION_DESC(ezAnimationControllerComponentManager::Update, this);
+    desc.m_bOnlyUpdateWhenSimulating = true;
+    desc.m_Phase = ezWorldUpdatePhase::Async;
+    desc.m_uiAsyncPhaseBatchSize = 2;
+    this->RegisterUpdateFunction(desc);
+  }
 
   ezResourceManager::GetResourceEvents().AddEventHandler(ezMakeDelegate(&ezAnimationControllerComponentManager::ResourceEvent, this));
 }
@@ -192,21 +202,27 @@ void ezAnimationControllerComponentManager::Deinitialize()
   ezResourceManager::GetResourceEvents().RemoveEventHandler(ezMakeDelegate(&ezAnimationControllerComponentManager::ResourceEvent, this));
 }
 
-void ezAnimationControllerComponentManager::Update(const ezWorldModule::UpdateContext& context)
+void ezAnimationControllerComponentManager::UpdateResetComponents(const ezWorldModule::UpdateContext& context)
 {
-  {
-    for (auto hComponent : m_ComponentsToReset)
-    {
-      ezAnimationControllerComponent* pComp = nullptr;
-      if (GetWorld()->TryGetComponent(hComponent, pComp))
-      {
-        pComp->OnSimulationStarted(); // just run this again
-      }
-    }
+  // This runs in PreAsync phase with write access, so TryGetComponent is safe
+  if (m_ComponentsToReset.IsEmpty())
+    return;
 
-    m_ComponentsToReset.Clear();
+  for (auto hComponent : m_ComponentsToReset)
+  {
+    ezAnimationControllerComponent* pComp = nullptr;
+    if (GetWorld()->TryGetComponent(hComponent, pComp))
+    {
+      pComp->OnSimulationStarted();
+    }
   }
 
+  m_ComponentsToReset.Clear();
+}
+
+void ezAnimationControllerComponentManager::Update(const ezWorldModule::UpdateContext& context)
+{
+  // This runs in Async phase - only iterate over managed components (no TryGetComponent)
   for (auto it = this->m_ComponentStorage.GetIterator(context.m_uiFirstComponentIndex, context.m_uiComponentCount); it.IsValid(); ++it)
   {
     ComponentType* pComponent = it;

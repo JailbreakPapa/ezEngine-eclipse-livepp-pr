@@ -192,7 +192,7 @@ void ezQtVisualGraphConnection::paint(QPainter* painter, const QStyleOptionGraph
 
   painter->drawPath(path());
 
-  if (decorationFlags.IsSet(ezQtVisualGraphScene::ConnectionDecorationFlags::DrawDebugging))
+  if (decorationFlags.IsSet(ezQtVisualGraphScene::ConnectionDecorationFlags::DrawDebugging) && m_bIsActive)
   {
     const float offset = fmod(ezTime::Now().GetSeconds(), 1.0f);
     const qreal segments = path().length() / 16;

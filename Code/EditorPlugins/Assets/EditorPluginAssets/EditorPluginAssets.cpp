@@ -14,6 +14,7 @@
 #include <EditorPluginAssets/AnimatedMeshAsset/AnimatedMeshAssetObjects.h>
 #include <EditorPluginAssets/AnimationClipAsset/AnimationClipActions.h>
 #include <EditorPluginAssets/AnimationClipAsset/AnimationClipAsset.h>
+#include <EditorPluginAssets/AnimationGraphAsset/AnimGraphActions.h>
 #include <EditorPluginAssets/DecalAsset/DecalAsset.h>
 #include <EditorPluginAssets/Dialogs/ShaderTemplateDlg.moc.h>
 #include <EditorPluginAssets/LUTAsset/LUTAssetObjects.h>
@@ -36,6 +37,8 @@
 
 static void ConfigureAnimationGraphAsset()
 {
+  ezAnimGraphActions::RegisterActions();
+
   // Menu Bar
   {
     ezActionMapManager::RegisterActionMap("AnimationGraphAssetMenuBar", "AssetMenuBar");
@@ -45,6 +48,10 @@ static void ConfigureAnimationGraphAsset()
   // Tool Bar
   {
     ezActionMapManager::RegisterActionMap("AnimationGraphAssetToolBar", "AssetToolbar");
+    ezAnimGraphActions::MapActions("AnimationGraphAssetToolBar");
+    ezCommonAssetActions::MapToolbarActions("AnimationGraphAssetToolBar",
+      ezCommonAssetUiState::Pause | ezCommonAssetUiState::Restart |
+      ezCommonAssetUiState::SimulationSpeed | ezCommonAssetUiState::Grid | ezCommonAssetUiState::Visualizers);
   }
 
   // View Tool Bar
@@ -461,6 +468,7 @@ void OnLoadPlugin()
 
 void OnUnloadPlugin()
 {
+  ezAnimGraphActions::UnregisterActions();
   ezTextureAssetActions::UnregisterActions();
   ezLUTAssetActions::UnregisterActions();
   ezVisualShaderActions::UnregisterActions();

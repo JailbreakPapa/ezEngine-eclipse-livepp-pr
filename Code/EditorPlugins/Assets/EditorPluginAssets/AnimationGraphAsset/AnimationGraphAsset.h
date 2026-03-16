@@ -40,6 +40,19 @@ public:
   ezAnimGraphPin::Type m_DataType = ezAnimGraphPin::Invalid;
 };
 
+/// Pin type used specifically for state machine state nodes.
+///
+/// Uses the same data as ezAnimationGraphNodePin but has a distinct RTTI type
+/// so that the Qt pin factory can create a custom visual representation (ezQtAnimGraphStatePin)
+/// only for state machine pins, without affecting blend-tree pins.
+class ezAnimGraphStateMachinePin : public ezAnimationGraphNodePin
+{
+  EZ_ADD_DYNAMIC_REFLECTION(ezAnimGraphStateMachinePin, ezAnimationGraphNodePin);
+
+public:
+  using ezAnimationGraphNodePin::ezAnimationGraphNodePin;
+};
+
 /// Object manager for animation graphs with hierarchical scope support.
 ///
 /// Manages animation graph nodes and their connections. Supports hierarchical editing through
@@ -142,8 +155,22 @@ class ezAnimationGraphAssetProperties : public ezReflectedClass
   EZ_ADD_DYNAMIC_REFLECTION(ezAnimationGraphAssetProperties, ezReflectedClass);
 
 public:
+  ezString m_sPreviewMesh;
   ezDynamicArray<ezString> m_IncludeGraphs;
   ezDynamicArray<ezAnimationClipMapping> m_AnimationClipMapping;
+};
+
+class ezAnimationGraphAssetDocument;
+
+struct ezAnimationGraphAssetEvent
+{
+  enum Type
+  {
+    RenderStateChanged,
+  };
+
+  ezAnimationGraphAssetDocument* m_pDocument = nullptr;
+  Type m_Type;
 };
 
 class ezAnimationGraphAssetDocument : public ezSimpleAssetDocument<ezAnimationGraphAssetProperties>
@@ -152,6 +179,20 @@ class ezAnimationGraphAssetDocument : public ezSimpleAssetDocument<ezAnimationGr
 
 public:
   ezAnimationGraphAssetDocument(ezStringView sDocumentPath);
+
+  const ezEvent<const ezAnimationGraphAssetEvent&>& Events() const { return m_Events; }
+
+  virtual void SetCommonAssetUiState(ezCommonAssetUiState::Enum state, double value) override;
+  virtual double GetCommonAssetUiState(ezCommonAssetUiState::Enum state) const override;
+
+  void SetRenderBones(bool bEnable);
+  bool GetRenderBones() const { return m_bRenderBones; }
+
+  void SetRenderPreviewMesh(bool bEnable);
+  bool GetRenderPreviewMesh() const { return m_bRenderPreviewMesh; }
+
+  /// Returns the mapping from runtime debug indices to document node GUIDs.
+  const ezDynamicArray<ezUuid>& GetDebugIndexToGuid() const { return m_DebugIndexToGuid; }
 
 protected:
   struct PinCount
@@ -163,6 +204,7 @@ protected:
   };
 
   virtual ezTransformStatus InternalTransformAsset(ezStreamWriter& stream, ezStringView sOutputTag, const ezPlatformProfile* pAssetProfile, const ezAssetFileHeader& AssetHeader, ezBitflags<ezTransformFlags> transformFlags) override;
+  virtual ezTransformStatus InternalCreateThumbnail(const ThumbnailInfo& ThumbnailInfo) override;
 
   virtual void GetSupportedMimeTypesForPasting(ezHybridArray<ezString, 4>& out_MimeTypes) const override;
   virtual bool CopySelectedObjects(ezAbstractObjectGraph& out_objectGraph, ezStringBuilder& out_MimeType) const override;
@@ -171,4 +213,12 @@ protected:
   virtual void InternalGetMetaDataHash(const ezDocumentObject* pObject, ezUInt64& inout_uiHash) const override;
   virtual void AttachMetaDataBeforeSaving(ezAbstractObjectGraph& graph) const override;
   virtual void RestoreMetaDataAfterLoading(const ezAbstractObjectGraph& graph, bool bUndoable) override;
+
+  ezEvent<const ezAnimationGraphAssetEvent&> m_Events;
+  bool m_bRenderBones = true;
+  bool m_bRenderPreviewMesh = true;
+  float m_fSimulationSpeed = 1.0f;
+
+  /// Maps debug index (runtime node index) to document node GUID for visualization.
+  ezDynamicArray<ezUuid> m_DebugIndexToGuid;
 };

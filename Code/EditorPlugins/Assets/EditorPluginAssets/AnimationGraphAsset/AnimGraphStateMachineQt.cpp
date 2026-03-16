@@ -28,7 +28,7 @@ EZ_BEGIN_SUBSYSTEM_DECLARATION(EditorPluginAssets, AnimGraphStateMachine)
       [](const ezRTTI* pRtti) -> ezQtVisualGraphNode* { return new ezQtAnimGraphAnyStateNode(); });
 
     ezQtVisualGraphScene::GetPinFactory().RegisterCreator(
-      ezGetStaticRTTI<ezAnimationGraphNodePin>(),
+      ezGetStaticRTTI<ezAnimGraphStateMachinePin>(),
       [](const ezRTTI* pRtti) -> ezQtVisualGraphPin* { return new ezQtAnimGraphStatePin(); });
 
     ezQtVisualGraphScene::GetConnectionFactory().RegisterCreator(
@@ -40,7 +40,7 @@ EZ_BEGIN_SUBSYSTEM_DECLARATION(EditorPluginAssets, AnimGraphStateMachine)
   {
     ezQtVisualGraphScene::GetNodeFactory().UnregisterCreator(ezGetStaticRTTI<ezAnimGraphStateNode>());
     ezQtVisualGraphScene::GetNodeFactory().UnregisterCreator(ezGetStaticRTTI<ezAnimGraphAnyStateNode>());
-    ezQtVisualGraphScene::GetPinFactory().UnregisterCreator(ezGetStaticRTTI<ezAnimationGraphNodePin>());
+    ezQtVisualGraphScene::GetPinFactory().UnregisterCreator(ezGetStaticRTTI<ezAnimGraphStateMachinePin>());
     ezQtVisualGraphScene::GetConnectionFactory().UnregisterCreator(ezGetStaticRTTI<ezAnimGraphTransitionConnection>());
   }
 
@@ -174,9 +174,10 @@ ezQtAnimGraphStatePin::ezQtAnimGraphStatePin() = default;
 
 void ezQtAnimGraphStatePin::SetPin(const ezVisualGraphPin& pin)
 {
-  ezQtVisualGraphPin::SetPin(pin);
 
-  // State pins use a simplified label
+  m_pPin = &pin;
+
+  // State machine pins use a simplified label instead of the pin name
   if (pin.GetType() == ezVisualGraphPin::Type::Input)
   {
     m_pLabel->setPlainText("");
@@ -186,6 +187,56 @@ void ezQtAnimGraphStatePin::SetPin(const ezVisualGraphPin& pin)
     m_pLabel->setPlainText("     +     ");
     m_pLabel->setToolTip("Add Transition");
   }
+
+  // Recompute pin geometry from the current label dimensions (same algorithm as base class)
+  auto rectLabel = m_pLabel->boundingRect();
+  const int iRadus = rectLabel.height();
+  QRectF bounds;
+
+  if (pin.GetType() == ezVisualGraphPin::Type::Input)
+  {
+    m_pLabel->setPos(iRadus, 0);
+    bounds = QRectF(0, 0, iRadus, iRadus);
+  }
+  else
+  {
+    m_pLabel->setPos(0, 0);
+    bounds = QRectF(rectLabel.width(), 0, iRadus, iRadus);
+  }
+
+  const int shrink = 3;
+  bounds.adjust(shrink, shrink, -shrink, -shrink);
+  m_PinCenter = bounds.center();
+
+  QPainterPath p;
+  switch (pin.m_Shape)
+  {
+    case ezVisualGraphPin::Shape::Circle:
+      p.addEllipse(bounds);
+      break;
+    case ezVisualGraphPin::Shape::Rect:
+      p.addRect(bounds);
+      break;
+    case ezVisualGraphPin::Shape::RoundRect:
+      p.addRoundedRect(bounds, 2, 2);
+      break;
+    case ezVisualGraphPin::Shape::Arrow:
+    {
+      QPolygonF arrow;
+      arrow.append(bounds.topLeft());
+      arrow.append(QPointF(bounds.center().x(), bounds.top()));
+      arrow.append(QPointF(bounds.right(), bounds.center().y()));
+      arrow.append(QPointF(bounds.center().x(), bounds.bottom()));
+      arrow.append(bounds.bottomLeft());
+      arrow.append(bounds.topLeft());
+      p.addPolygon(arrow);
+      break;
+    }
+      EZ_DEFAULT_CASE_NOT_IMPLEMENTED;
+  }
+
+  setPath(p);
+  UpdatePinColors();
 }
 
 //////////////////////////////////////////////////////////////////////////

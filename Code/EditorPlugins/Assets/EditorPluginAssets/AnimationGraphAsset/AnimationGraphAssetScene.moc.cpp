@@ -2,11 +2,14 @@
 
 #include <EditorPluginAssets/AnimationGraphAsset/AnimationGraphAsset.h>
 #include <EditorPluginAssets/AnimationGraphAsset/AnimationGraphAssetScene.moc.h>
+#include <GuiFoundation/VisualGraph/Connection.h>
 #include <GuiFoundation/VisualGraph/Node.h>
+#include <GuiFoundation/VisualGraph/Pin.h>
 #include <SharedPluginAssets/AnimationGraphAsset/AnimGraphStateMachineTypes.h>
 #include <ToolsFoundation/CommandHistory/CommandHistory.h>
 
 #include <QGraphicsSceneMouseEvent>
+#include <QTimer>
 
 ezQtAnimationGraphAssetScene::ezQtAnimationGraphAssetScene(QObject* pParent)
   : ezQtVisualGraphScene(pParent)
@@ -14,6 +17,17 @@ ezQtAnimationGraphAssetScene::ezQtAnimationGraphAssetScene(QObject* pParent)
 }
 
 ezQtAnimationGraphAssetScene::~ezQtAnimationGraphAssetScene() = default;
+
+void ezQtAnimationGraphAssetScene::InitScene(const ezVisualGraphObjectManager* pManager)
+{
+  ezQtVisualGraphScene::InitScene(pManager);
+
+  // Apply connection style and decoration flags for the initial scope
+  UpdateConnectionStyleForScope();
+
+  // Apply initial scope filter so only root-level nodes are visible
+  ApplyScopeFilter();
+}
 
 void ezQtAnimationGraphAssetScene::NavigateToScope(const ezUuid& scopeGuid)
 {
@@ -27,9 +41,8 @@ void ezQtAnimationGraphAssetScene::NavigateToScope(const ezUuid& scopeGuid)
   // Update connection rendering style
   UpdateConnectionStyleForScope();
 
-  // TODO: Rebuild the scene to show only nodes in the new scope.
-  // This requires extending the base ezQtVisualGraphScene to support scope-filtered
-  // node visibility, which is a deeper framework change tracked for follow-up.
+  // Show/hide nodes and connections based on the new scope
+  ApplyScopeFilter();
 
   Q_EMIT ScopeChanged(scopeGuid);
 }
@@ -41,13 +54,90 @@ void ezQtAnimationGraphAssetScene::UpdateConnectionStyleForScope()
   if (pManager->IsCurrentScopeStateMachine())
   {
     SetConnectionStyle(ezQtVisualGraphScene::ConnectionStyle::StraightLine);
-    SetConnectionDecorationFlags(ezQtVisualGraphScene::ConnectionDecorationFlags::DirectionArrows);
+    SetConnectionDecorationFlags(
+      ezQtVisualGraphScene::ConnectionDecorationFlags::DirectionArrows |
+      ezQtVisualGraphScene::ConnectionDecorationFlags::DrawDebugging);
   }
   else
   {
     SetConnectionStyle(ezQtVisualGraphScene::ConnectionStyle::BezierCurve);
-    SetConnectionDecorationFlags(ezBitflags<ezQtVisualGraphScene::ConnectionDecorationFlags>());
+    SetConnectionDecorationFlags(ezQtVisualGraphScene::ConnectionDecorationFlags::DrawDebugging);
   }
+}
+
+void ezQtAnimationGraphAssetScene::ApplyScopeFilter()
+{
+  auto* pManager = static_cast<const ezAnimationGraphNodeManager*>(m_pManager);
+
+  // Filter nodes: only show those belonging to the current scope
+  for (auto it = m_Nodes.GetIterator(); it.IsValid(); ++it)
+  {
+    const ezDocumentObject* pDocObj = it.Key();
+    ezQtVisualGraphNode* pQtNode = it.Value();
+
+    ezUuid nodeScope = pManager->GetNodeScope(pDocObj);
+    pQtNode->setVisible(nodeScope == m_CurrentScope);
+  }
+
+  // Filter connections: only show those where both endpoints are in the current scope
+  for (auto it = m_Connections.GetIterator(); it.IsValid(); ++it)
+  {
+    const ezDocumentObject* pConnectionObj = it.Key();
+    ezQtVisualGraphConnection* pQtConnection = it.Value();
+
+    pQtConnection->setVisible(IsConnectionInCurrentScope(pConnectionObj));
+  }
+
+  // Force visible nodes to run their deferred layout update immediately,
+  // then refresh all connection positions. This must happen because:
+  // 1. Nodes have a deferred UpdateGeometry() that runs in paint() which repositions pins.
+  // 2. Qt does not fire ItemScenePositionHasChanged when items become visible.
+  // By calling ResetFlags + update + UpdateConnections, we ensure pins are at their
+  // final positions before connections draw.
+  for (auto it = m_Nodes.GetIterator(); it.IsValid(); ++it)
+  {
+    ezQtVisualGraphNode* pQtNode = it.Value();
+    if (!pQtNode->isVisible())
+      continue;
+
+    // Force an immediate layout recalculation
+    pQtNode->ResetFlags();
+    pQtNode->update();
+  }
+
+  // Defer connection refresh to after the event loop processes the paint events,
+  // ensuring pin positions are finalized by the deferred UpdateGeometry in paint().
+  QTimer::singleShot(0, [this]()
+    {
+      for (auto it = m_Nodes.GetIterator(); it.IsValid(); ++it)
+      {
+        ezQtVisualGraphNode* pQtNode = it.Value();
+        if (!pQtNode->isVisible())
+          continue;
+
+        for (ezQtVisualGraphPin* pPin : pQtNode->GetInputPins())
+          pPin->UpdateConnections();
+        for (ezQtVisualGraphPin* pPin : pQtNode->GetOutputPins())
+          pPin->UpdateConnections();
+      }
+    });
+}
+
+bool ezQtAnimationGraphAssetScene::IsConnectionInCurrentScope(const ezDocumentObject* pConnectionObj) const
+{
+  auto* pManager = static_cast<const ezAnimationGraphNodeManager*>(m_pManager);
+
+  const ezVisualGraphConnection* pConnection = pManager->GetConnectionIfExists(pConnectionObj);
+  if (pConnection == nullptr)
+    return false;
+
+  const ezDocumentObject* pSourceNode = pConnection->GetSourcePin().GetParent();
+  const ezDocumentObject* pTargetNode = pConnection->GetTargetPin().GetParent();
+
+  ezUuid sourceScope = pManager->GetNodeScope(pSourceNode);
+  ezUuid targetScope = pManager->GetNodeScope(pTargetNode);
+
+  return sourceScope == m_CurrentScope && targetScope == m_CurrentScope;
 }
 
 void ezQtAnimationGraphAssetScene::SetInitialState(ezQtVisualGraphNode* pNode)
@@ -102,4 +192,56 @@ void ezQtAnimationGraphAssetScene::mouseDoubleClickEvent(QGraphicsSceneMouseEven
   }
 
   ezQtVisualGraphScene::mouseDoubleClickEvent(event);
+}
+
+void ezQtAnimationGraphAssetScene::SetNodeActivity(const ezSet<ezUuid>& activeNodes)
+{
+  // Skip all work if the active set hasn't changed since last frame
+  if (activeNodes == m_PreviousActiveNodes)
+  {
+    // Still need to repaint active connections for the animated dots
+    for (auto it = m_Connections.GetIterator(); it.IsValid(); ++it)
+    {
+      ezQtVisualGraphConnection* pQtCon = it.Value();
+      if (pQtCon->m_bIsActive && pQtCon->isVisible())
+        pQtCon->update();
+    }
+    return;
+  }
+
+  m_PreviousActiveNodes = activeNodes;
+
+  // Only update nodes whose active state actually changed
+  for (auto it = m_Nodes.GetIterator(); it.IsValid(); ++it)
+  {
+    ezQtVisualGraphNode* pQtNode = it.Value();
+    if (!pQtNode->isVisible())
+      continue;
+
+    const bool bActive = activeNodes.Contains(it.Key()->GetGuid());
+    pQtNode->SetActive(bActive);
+  }
+
+  // Update connection activity and repaint only changed or active connections
+  for (auto it = m_Connections.GetIterator(); it.IsValid(); ++it)
+  {
+    ezQtVisualGraphConnection* pQtCon = it.Value();
+    if (!pQtCon->isVisible())
+      continue;
+
+    const ezVisualGraphConnection* pCon = pQtCon->GetConnection();
+    if (pCon == nullptr)
+      continue;
+
+    const ezDocumentObject* pSrcNode = pCon->GetSourcePin().GetParent();
+    const ezDocumentObject* pDstNode = pCon->GetTargetPin().GetParent();
+
+    const bool bActive = activeNodes.Contains(pSrcNode->GetGuid()) && activeNodes.Contains(pDstNode->GetGuid());
+    const bool bChanged = (pQtCon->m_bIsActive != bActive);
+    pQtCon->m_bIsActive = bActive;
+
+    // Repaint if state changed, or if active (for animated dots)
+    if (bChanged || bActive)
+      pQtCon->update();
+  }
 }

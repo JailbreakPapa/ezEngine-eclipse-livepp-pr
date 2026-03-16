@@ -546,6 +546,16 @@ EZ_ALWAYS_INLINE void ezWorld::CheckForWriteAccess() const
     m_Data.m_WriteThreadID == ezThreadUtils::GetCurrentThreadID(), "Trying to write to World '{0}', but it is not marked for writing.", GetName());
 }
 
+EZ_ALWAYS_INLINE bool ezWorld::HasWriteAccess() const
+{
+  return m_Data.m_WriteThreadID == ezThreadUtils::GetCurrentThreadID();
+}
+
+EZ_ALWAYS_INLINE bool ezWorld::HasReadAccess() const
+{
+  return m_Data.m_iReadCounter > 0;
+}
+
 EZ_ALWAYS_INLINE ezGameObject* ezWorld::GetObjectUnchecked(ezUInt32 uiIndex) const
 {
   return m_Data.m_Objects.GetValueUnchecked(uiIndex);

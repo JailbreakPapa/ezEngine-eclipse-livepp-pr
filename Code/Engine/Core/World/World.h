@@ -345,6 +345,12 @@ public:
   /// \brief Mark the world for writing by using EZ_LOCK(world.GetWriteMarker()). Only one thread can write at a time.
   ezInternal::WorldData::WriteMarker& GetWriteMarker(); // [tested]
 
+  /// \brief Returns true if the current thread has write access to this world.
+  bool HasWriteAccess() const;
+
+  /// \brief Returns true if the current thread has read access to this world.
+  bool HasReadAccess() const;
+
   /// \brief Allows re-setting the maximum time that is spent on component initialization per frame, which is first configured on construction.
   void SetMaxInitializationTimePerFrame(ezTime maxInitTime);
 
