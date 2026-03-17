@@ -56,6 +56,12 @@ public:
   const char* GetCustomNodeTitle() const { return m_sCustomNodeTitle.GetString(); }
   void SetCustomNodeTitle(const char* szSz) { m_sCustomNodeTitle.Assign(szSz); }
 
+  /// Returns the debug index assigned during asset transform, used for editor visualization.
+  ezUInt32 GetDebugIndex() const { return m_uiDebugIndex; }
+
+  /// Sets the debug index. Should only be called during asset transform.
+  void SetDebugIndex(ezUInt32 uiIndex) { m_uiDebugIndex = uiIndex; }
+
 protected:
   friend class ezAnimGraphInstance;
   friend class ezAnimGraph;
@@ -63,6 +69,7 @@ protected:
 
   ezHashedString m_sCustomNodeTitle;
   ezUInt32 m_uiInstanceDataOffset = ezInvalidIndex;
+  ezUInt32 m_uiDebugIndex = 0;
 
   virtual ezResult SerializeNode(ezStreamWriter& stream) const = 0;
   virtual ezResult DeserializeNode(ezStreamReader& stream) = 0;

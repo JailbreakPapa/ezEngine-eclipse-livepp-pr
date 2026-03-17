@@ -381,3 +381,31 @@ void ezAnimController::SetAnimationClipInfo(const ezHashedString& sClipName, con
 {
   m_AnimationClipMapping[sClipName] = info;
 }
+
+const ezDynamicArray<bool>* ezAnimController::GetActiveNodes(ezUInt32 uiGraphIdx) const
+{
+  if (uiGraphIdx >= m_Instances.GetCount())
+    return nullptr;
+
+  if (m_Instances[uiGraphIdx].m_pInstance == nullptr)
+    return nullptr;
+
+  return &m_Instances[uiGraphIdx].m_pInstance->GetActiveNodes();
+}
+
+const ezAnimGraphResourceHandle& ezAnimController::GetGraphResourceHandle(ezUInt32 uiGraphIdx) const
+{
+  static ezAnimGraphResourceHandle s_Invalid;
+  if (uiGraphIdx >= m_Instances.GetCount())
+    return s_Invalid;
+
+  return m_Instances[uiGraphIdx].m_hAnimGraph;
+}
+
+const ezAnimGraphInstance* ezAnimController::GetGraphInstance(ezUInt32 uiGraphIdx) const
+{
+  if (uiGraphIdx >= m_Instances.GetCount())
+    return nullptr;
+
+  return m_Instances[uiGraphIdx].m_pInstance.Borrow();
+}

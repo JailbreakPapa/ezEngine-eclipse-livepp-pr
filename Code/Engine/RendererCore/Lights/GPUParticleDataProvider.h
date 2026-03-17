@@ -34,6 +34,24 @@ struct EZ_RENDERERCORE_DLL ezGPUParticleSystemInfo
   ezUInt32 m_uiTrailWriteIndex = 0;
   ezGALBufferHandle m_hTrailPositionBuffer;
   float m_fVelocityStretch = 1.0f;
+
+  // Size curve keyframes (8 evenly-spaced samples over particle life)
+  ezVec4 m_vSizeKeyframes0 = ezVec4(1.0f, 0.857f, 0.714f, 0.571f);
+  ezVec4 m_vSizeKeyframes1 = ezVec4(0.429f, 0.286f, 0.143f, 0.0f);
+
+  // Color gradient LUT texture
+  ezGALTextureHandle m_hColorGradientTexture;
+  bool m_bHasColorGradient = false;
+
+  // Noise/Turbulence
+  float m_fNoiseStrength = 0.0f;
+  float m_fNoiseFrequency = 1.0f;
+  float m_fNoiseSpeed = 0.5f;
+
+  // Local-space simulation
+  bool m_bSimulateInLocalSpace = false;
+  ezMat4 m_ObjectToWorldMatrix = ezMat4::MakeIdentity();
+  ezMat4 m_WorldToObjectMatrix = ezMat4::MakeIdentity();
 };
 
 struct EZ_RENDERERCORE_DLL ezGPUParticleData

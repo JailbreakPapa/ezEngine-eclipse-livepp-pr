@@ -51,5 +51,12 @@ CONSTANT_BUFFER(ezGPUParticleConstants, 4)
   UINT1(GPUPartMaxTrailPoints);
   UINT1(GPUPartTrailWriteIndex);
   FLOAT1(GPUPartVelocityStretch);
-  UINT1(GPUPartPadding1);
+  UINT1(GPUPartUseColorGradientTexture);
+
+  FLOAT1(GPUPartNoiseStrength);
+  FLOAT1(GPUPartNoiseFrequency);
+  FLOAT1(GPUPartNoiseSpeed);
+  UINT1(GPUPartSimulateInLocalSpace);
+
+  MAT4(GPUPartWorldToObjectMatrix);
 };

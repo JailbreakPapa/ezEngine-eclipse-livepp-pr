@@ -10,260 +10,88 @@ CAMERA_MODE
 #include <Shaders/Common/GlobalConstants.h>
 #include "ScreenSpaceShadowConstants.h"
 
-// Bend SSS configuration
-#define WAVE_SIZE 64
-#define SAMPLE_COUNT 60
-#define HARD_SHADOW_SAMPLES 4
-#define FADE_OUT_SAMPLES 8
-
-#define USE_HALF_PIXEL_OFFSET 1
-#define USE_UV_PIXEL_BIAS 1
-
-// Resources declared at global scope (required for FXC/DX11 compatibility)
 Texture2D<float> DepthTexture;
 RWTexture2D<float> OutputTexture;
-SamplerState PointBorderSampler;
 
-#if EZ_ENABLED(PLATFORM_VULKAN)
-
-// Vulkan (DXC): use the Bend SSS library directly
-#include "bend_sss_gpu.h"
-
-[numthreads(WAVE_SIZE, 1, 1)]
-void main(uint3 groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID)
+// Project world position to screen space (UV + NDC depth), matching SSR's proven convention.
+float3 ProjectToScreen(float3 worldPos)
 {
-  DispatchParameters params;
-  params.SetDefaults();
-
-  params.SurfaceThickness = SSSSurfaceThickness;
-  params.BilinearThreshold = SSSBilinearThreshold;
-  params.ShadowContrast = SSSShadowContrast;
-  params.FarDepthValue = SSSFarDepthValue;
-  params.NearDepthValue = SSSNearDepthValue;
-  params.InvDepthTextureSize = SSSInvDepthTextureSize;
-  params.LightCoordinate = SSSLightCoordinate;
-  params.WaveOffset = SSSWaveOffset;
-  params.DepthTexture = DepthTexture;
-  params.OutputTexture = OutputTexture;
-  params.PointBorderSampler = PointBorderSampler;
-
-  params.DepthBounds = float2(0, 1);
-  params.UseEarlyOut = true;
-
-  WriteScreenSpaceShadow(params, (int3)groupID, (int)groupThreadID);
+  float4 clipPos = mul(GetWorldToScreenMatrix(), float4(worldPos, 1.0));
+  clipPos.xyz /= clipPos.w;
+  float2 uv = clipPos.xy * float2(0.5, -0.5) + 0.5;
+  return float3(uv, clipPos.z);
 }
 
-#elif EZ_ENABLED(PLATFORM_DX11)
-
-// ============================================================================
-// DX11 (FXC) path: Bend SSS algorithm inlined with global resources and
-// LDS-only early-out (no wave intrinsics).
-//
-// Based on bend_sss_gpu.h, Copyright 2023 Sony Interactive Entertainment.
-// Licensed under the Apache License, Version 2.0.
-// ============================================================================
-
-#define READ_COUNT (SAMPLE_COUNT / WAVE_SIZE + 2)
-
-groupshared float DepthData[READ_COUNT * WAVE_SIZE];
-groupshared bool LdsEarlyOut;
-
-static void ComputeWavefrontExtents(float4 lightCoord, int2 waveOffset, int3 inGroupID, uint inGroupThreadID,
-  out float2 outDeltaXY, out float2 outPixelXY, out float outPixelDistance, out bool outMajorAxisX)
+float3 ReconstructWorldPosition(float2 uv, float depth)
 {
-  int2 xy = inGroupID.yz * WAVE_SIZE + waveOffset;
-
-  float2 light_xy = floor(lightCoord.xy) + 0.5;
-  float2 light_xy_fraction = lightCoord.xy - light_xy;
-  bool reverse_direction = lightCoord.w > 0.0f;
-
-  int2 sign_xy = sign(xy);
-  bool horizontal = abs(xy.x + sign_xy.y) < abs(xy.y - sign_xy.x);
-
-  int2 axis;
-  axis.x = horizontal ? (+sign_xy.y) : (0);
-  axis.y = horizontal ? (0) : (-sign_xy.x);
-
-  xy = axis * (int)inGroupID.x + xy;
-  float2 xy_f = (float2)xy;
-
-  bool x_axis_major = abs(xy_f.x) > abs(xy_f.y);
-  float major_axis = x_axis_major ? xy_f.x : xy_f.y;
-
-  float major_axis_start = abs(major_axis);
-  float major_axis_end = abs(major_axis) - (float)WAVE_SIZE;
-
-  float ma_light_frac = x_axis_major ? light_xy_fraction.x : light_xy_fraction.y;
-  ma_light_frac = major_axis > 0 ? -ma_light_frac : ma_light_frac;
-
-  float2 start_xy = xy_f + light_xy;
-
-  float2 end_xy = lerp(lightCoord.xy, start_xy, (major_axis_end + ma_light_frac) / (major_axis_start + ma_light_frac));
-
-  float2 xy_delta = (start_xy - end_xy);
-
-  float thread_step = (float)(inGroupThreadID ^ (reverse_direction ? 0 : (WAVE_SIZE - 1)));
-
-  float2 pixel_xy = lerp(start_xy, end_xy, thread_step / (float)WAVE_SIZE);
-  float pixel_distance = major_axis_start - thread_step + ma_light_frac;
-
-  outPixelXY = pixel_xy;
-  outPixelDistance = pixel_distance;
-  outDeltaXY = xy_delta;
-  outMajorAxisX = x_axis_major;
+  float2 clipXY = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+  float4 worldPosH = mul(GetScreenToWorldMatrix(), float4(clipXY, depth, 1.0));
+  return worldPosH.xyz / worldPosH.w;
 }
 
-[numthreads(WAVE_SIZE, 1, 1)]
-void main(uint3 groupID : SV_GroupID, uint groupThreadID : SV_GroupThreadID)
+[numthreads(SSS_THREAD_GROUP_SIZE, SSS_THREAD_GROUP_SIZE, 1)]
+void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-  float2 xy_delta;
-  float2 pixel_xy;
-  float pixel_distance;
-  bool x_axis_major;
+  uint2 pixelCoord = dispatchThreadID.xy;
 
-  float4 lightCoord = SSSLightCoordinate;
-  int2 waveOffset = SSSWaveOffset;
-  float surfaceThickness = SSSSurfaceThickness;
-  float bilinearThreshold = SSSBilinearThreshold;
-  float shadowContrast = SSSShadowContrast;
-  float farDepthValue = SSSFarDepthValue;
-  float nearDepthValue = SSSNearDepthValue;
-  float2 invDepthTexSize = SSSInvDepthTextureSize;
-
-  ComputeWavefrontExtents(lightCoord, waveOffset, (int3)groupID, groupThreadID, xy_delta, pixel_xy, pixel_distance, x_axis_major);
-
-  float sampling_depth[READ_COUNT];
-  float shadowing_depth[READ_COUNT];
-  float depth_thickness_scale[READ_COUNT];
-  float sample_distance[READ_COUNT];
-
-  const float direction = -lightCoord.w;
-  const float z_sign = nearDepthValue > farDepthValue ? -1 : +1;
-
-  int i;
-  bool is_edge = false;
-  bool skip_pixel = false;
-  float2 write_xy = floor(pixel_xy);
-
-  [unroll] for (i = 0; i < READ_COUNT; i++)
-  {
-    float2 read_xy = floor(pixel_xy);
-    float minor_axis = x_axis_major ? pixel_xy.y : pixel_xy.x;
-
-    const float edge_skip = 1e20;
-
-    float2 depths;
-    float bilinear = frac(minor_axis) - 0.5;
-
-    read_xy += 0.5;
-
-    float bias = bilinear > 0 ? 1 : -1;
-    float2 offset_xy = float2(x_axis_major ? 0 : bias, x_axis_major ? bias : 0);
-
-    depths.x = DepthTexture.SampleLevel(PointBorderSampler, read_xy * invDepthTexSize, 0);
-    depths.y = DepthTexture.SampleLevel(PointBorderSampler, (read_xy + offset_xy) * invDepthTexSize, 0);
-
-    depth_thickness_scale[i] = abs(farDepthValue - depths.x);
-
-    bool use_point_filter = abs(depths.x - depths.y) > depth_thickness_scale[i] * bilinearThreshold;
-
-    if (i == 0) is_edge = use_point_filter;
-
-    // BilinearSamplingOffsetMode = false (default)
-    {
-      sampling_depth[i] = depths.x;
-
-      float edge_depth = depths.x; // IgnoreEdgePixels = false
-      float shadow_depth = depths.x + abs(depths.x - depths.y) * z_sign;
-
-      shadowing_depth[i] = use_point_filter ? edge_depth : shadow_depth;
-    }
-
-    sample_distance[i] = pixel_distance + (WAVE_SIZE * i) * direction;
-
-    pixel_xy += xy_delta * direction;
-  }
-
-  // LDS-only early-out (no wave intrinsics)
-  {
-    float depth = sampling_depth[0];
-    skip_pixel = depth >= 1.0 || depth <= 0.0; // DepthBounds = (0, 1), standard Z: far=1, near=0
-
-    LdsEarlyOut = true;
-
-    GroupMemoryBarrierWithGroupSync();
-
-    [branch] if (!skip_pixel)
-      LdsEarlyOut = false;
-
-    GroupMemoryBarrierWithGroupSync();
-
-    [branch] if (LdsEarlyOut)
-      return;
-  }
-
-  // Write shadow depths to LDS
-  [unroll] for (i = 0; i < READ_COUNT; i++)
-  {
-    float stored_depth = (shadowing_depth[i] - lightCoord.z) / sample_distance[i];
-
-    if (i != 0)
-    {
-      stored_depth = sample_distance[i] > 0 ? stored_depth : 1e10;
-    }
-
-    int idx = (i * WAVE_SIZE) + (int)groupThreadID;
-    DepthData[idx] = stored_depth;
-  }
-
-  GroupMemoryBarrierWithGroupSync();
-
-  if (skip_pixel)
+  if (pixelCoord.x >= SSSResolutionX || pixelCoord.y >= SSSResolutionY)
     return;
 
-  float start_depth = sampling_depth[0];
-
-  start_depth = (start_depth - lightCoord.z) / sample_distance[0];
-
-  int sample_index = (int)groupThreadID + 1;
-
-  float4 shadow_value = 1;
-  float hard_shadow = 1;
-
-  float depth_scale = min(sample_distance[0] + direction, 1.0 / surfaceThickness) * sample_distance[0] / depth_thickness_scale[0];
-
-  start_depth = start_depth * depth_scale - z_sign;
-
-  // Hard shadow samples
-  [unroll] for (i = 0; i < HARD_SHADOW_SAMPLES; i++)
+  float centerDepth = DepthTexture[pixelCoord];
+  if (centerDepth >= 1.0 || centerDepth <= 0.0)
   {
-    float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
-    hard_shadow = min(hard_shadow, depth_delta);
+    OutputTexture[pixelCoord] = 1.0;
+    return;
   }
 
-  // Main shadow samples
-  [unroll] for (i = HARD_SHADOW_SAMPLES; i < SAMPLE_COUNT - FADE_OUT_SAMPLES; i++)
+  // Reconstruct world position
+  float2 uv = (float2(pixelCoord) + 0.5) * SSSTexelSize;
+  float3 worldPos = ReconstructWorldPosition(uv, centerDepth);
+  float centerLinearDepth = LinearizeZBufferDepth(centerDepth);
+
+  // March in world space toward the light, compare in screen space
+  float3 lightDir = normalize(SSSLightDirectionWS);
+  float stepLength = SSSMaxRayDistance / (float)SSSMaxSteps;
+  float3 worldStep = lightDir * stepLength;
+
+  // Start the ray 1 step ahead to avoid self-intersection.
+  // Add a 0-1 noise offset on top for temporal dithering (requires TAA).
+  float noise = InterleavedGradientNoise(float2(pixelCoord) + float(SSSFrameIndex % 16));
+  float3 rayWorldPos = worldPos + worldStep * (1.0 + noise);
+
+  float occlusion = 0.0;
+
+  [loop]
+  for (uint i = 0; i < SSSMaxSteps; i++)
   {
-    float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
-    shadow_value[i & 3] = min(shadow_value[i & 3], depth_delta);
+    rayWorldPos += worldStep;
+
+    // Project the ray position to screen space
+    float3 raySS = ProjectToScreen(rayWorldPos);
+
+    // Check if the ray is still within the screen
+    if (any(raySS.xy < 0.0) || any(raySS.xy > 1.0))
+      break;
+
+    // Sample the depth buffer at the ray's screen position
+    float sceneDepthNDC = DepthTexture.SampleLevel(PointClampSampler, raySS.xy, 0);
+    if (sceneDepthNDC >= 1.0)
+      continue;
+
+    float rayLinearDepth = LinearizeZBufferDepth(raySS.z);
+    float sceneLinearDepth = LinearizeZBufferDepth(sceneDepthNDC);
+
+    // The ray is occluded when it passes behind scene geometry (further from camera).
+    float depthDelta = rayLinearDepth - sceneLinearDepth;
+
+    if (depthDelta > 0.0 && depthDelta < SSSSurfaceThickness)
+    {
+      // Screen edge fade to prevent hard cutoff artifacts
+      float2 fade = saturate(raySS.xy / 0.05) * saturate((1.0 - raySS.xy) / 0.05);
+      occlusion = fade.x * fade.y;
+      break;
+    }
   }
 
-  // Fade-out samples
-  [unroll] for (i = SAMPLE_COUNT - FADE_OUT_SAMPLES; i < SAMPLE_COUNT; i++)
-  {
-    float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
-    const float fade_out = (float)(i + 1 - (SAMPLE_COUNT - FADE_OUT_SAMPLES)) / (float)(FADE_OUT_SAMPLES + 1) * 0.75;
-    shadow_value[i & 3] = min(shadow_value[i & 3], depth_delta + fade_out);
-  }
-
-  // Contrast
-  shadow_value = saturate(shadow_value * shadowContrast + (1 - shadowContrast));
-  hard_shadow = saturate(hard_shadow * shadowContrast + (1 - shadowContrast));
-
-  float result = dot(shadow_value, 0.25);
-  result = min(hard_shadow, result);
-
-  OutputTexture[(int2)write_xy] = result;
+  OutputTexture[pixelCoord] = 1.0 - occlusion * SSSShadowIntensity;
 }
-
-#endif // PLATFORM

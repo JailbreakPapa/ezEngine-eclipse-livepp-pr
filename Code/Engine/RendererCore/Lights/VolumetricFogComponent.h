@@ -21,6 +21,7 @@ public:
   ezColor m_Albedo;
   ezColor m_AmbientLight;
   float m_fTemporalBlendWeight;
+  float m_fFalloffExponent;
 
   /// The world-space transform of the fog volume (position + rotation + scale).
   ezTransform m_GlobalTransform;
@@ -104,14 +105,14 @@ protected:
   void OnMsgExtractRenderData(ezMsgExtractRenderData& msg) const;
 
   ezVec3 m_vExtents = ezVec3(10.0f);
-  float m_fDensity = 0.05f;
+  float m_fDensity = 0.5f;
   float m_fAnisotropy = 0.3f;
-  float m_fHeightFalloff = 0.1f;
+  float m_fHeightFalloff = 0.0f;
   ezColor m_Albedo = ezColor::White;
   ezColor m_AmbientLight = ezColor(0.15f, 0.15f, 0.2f);
   float m_fStartDistance = 0.0f;
   float m_fNearPlane = 0.5f;
   float m_fFarPlane = 500.0f;
   float m_fTemporalBlendWeight = 0.05f;
-  float m_fFalloffExponent = 2.0f;
+  float m_fFalloffExponent = 1.0f;
 };

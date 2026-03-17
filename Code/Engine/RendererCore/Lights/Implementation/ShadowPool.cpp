@@ -612,6 +612,91 @@ ezUInt32 ezShadowPool::AddPointLight(const ezPointLightComponent* pPointLight, f
 }
 
 // static
+ezUInt32 ezShadowPool::AddAreaLightAsPointLight(const ezLightComponent* pLight, float fEffectiveRange, float fScreenSpaceSize, const ezView* pReferenceView)
+{
+  EZ_ASSERT_DEBUG(pLight->GetCastShadows(), "Implementation error");
+
+  // point lights use a lot of atlas space thus we half the scale
+  const float fShadowMapScale = ShadowMapScaleFromScreenSpaceSize(fScreenSpaceSize) * 0.5f;
+  ShadowData* pData = nullptr;
+  if (s_pData->GetDataForExtraction(pLight, nullptr, fShadowMapScale, sizeof(ezPointShadowData), pData))
+  {
+    return pData->m_uiPackedDataOffset;
+  }
+
+  pData->m_uiType = LIGHT_TYPE_POINT;
+  pData->m_Views.SetCount(6);
+
+  ezVec3 faceDirs[6] = {
+    ezVec3(1.0f, 0.0f, 0.0f),
+    ezVec3(-1.0f, 0.0f, 0.0f),
+    ezVec3(0.0f, 1.0f, 0.0f),
+    ezVec3(0.0f, -1.0f, 0.0f),
+    ezVec3(0.0f, 0.0f, 1.0f),
+    ezVec3(0.0f, 0.0f, -1.0f),
+  };
+
+  const ezStringView viewNames[6] = {
+    "+X"_ezsv,
+    "-X"_ezsv,
+    "+Y"_ezsv,
+    "-Y"_ezsv,
+    "+Z"_ezsv,
+    "-Z"_ezsv,
+  };
+
+  const ezGameObject* pOwner = pLight->GetOwner();
+  ezVec3 vPosition = pOwner->GetGlobalPosition();
+  ezVec3 vUp = ezVec3(0.0f, 0.0f, 1.0f);
+
+  float fPenumbraSize = ezMath::Max(pLight->GetPenumbraSize(), (0.5f / cvar_RenderingShadowsMinShadowMapSize));
+  float fFov = AddSafeBorder(ezAngle::MakeFromDegree(90.0f), fPenumbraSize);
+
+  float fNearPlane = 0.1f;
+  float fFarPlane = fEffectiveRange;
+
+  ezStringBuilder tmp;
+
+  for (ezUInt32 i = 0; i < 6; ++i)
+  {
+    ezView* pView = nullptr;
+    ShadowView& shadowView = s_pData->GetShadowView(pView);
+    pData->m_Views[i] = shadowView.m_hView;
+
+    // Setup view
+    {
+      if (pOwner->GetName().IsEmpty())
+      {
+        tmp.Set("AreaLight", viewNames[i]);
+      }
+      else
+      {
+        tmp.Set(pOwner->GetName(), viewNames[i]);
+      }
+
+      pView->SetName(tmp);
+
+      pView->SetWorld(const_cast<ezWorld*>(pLight->GetWorld()));
+      pView->SetRenderPassProperty("ShadowDepth", "RenderTransparentObjects", pLight->GetTransparentShadows());
+      CopyExcludeTagsOnWhiteList(pReferenceView->m_ExcludeTags, pView->m_ExcludeTags);
+    }
+
+    // Setup camera
+    {
+      ezVec3 vForward = faceDirs[i];
+
+      ezCamera& camera = shadowView.m_Camera;
+      camera.LookAt(vPosition, vPosition + vForward, vUp);
+      camera.SetCameraMode(ezCameraMode::PerspectiveFixedFovX, fFov, fNearPlane, fFarPlane);
+    }
+
+    ezRenderWorld::AddViewToRender(shadowView.m_hView);
+  }
+
+  return pData->m_uiPackedDataOffset;
+}
+
+// static
 ezUInt32 ezShadowPool::AddSpotLight(const ezSpotLightComponent* pSpotLight, float fScreenSpaceSize, const ezView* pReferenceView)
 {
   EZ_ASSERT_DEBUG(pSpotLight->GetCastShadows(), "Implementation error");

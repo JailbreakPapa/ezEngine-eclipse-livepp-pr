@@ -7,13 +7,7 @@
 class QGraphicsTextItem;
 class ezVisualGraphObjectManager;
 
-/// Qt graphics item for comment boxes in visual graphs, similar to Unreal Blueprint comments.
-///
-/// Renders as a colored semi-transparent rectangle behind regular nodes (z-value -1).
-/// Supports:
-/// - Dragging edges/corners to resize
-/// - Moving the comment moves all contained nodes with it
-/// - Color and text are editable through the property panel
+/// Qt graphics item for comment boxes in visual graphs, similar to Blueprint comments.
 class EZ_GUIFOUNDATION_DLL ezQtVisualGraphCommentNode : public ezQtVisualGraphNode
 {
 public:

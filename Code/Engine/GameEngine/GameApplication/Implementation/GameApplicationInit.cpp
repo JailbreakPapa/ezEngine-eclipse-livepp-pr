@@ -30,6 +30,8 @@
 
 #ifdef BUILDSYSTEM_ENABLE_VULKAN_SUPPORT
 constexpr const char* szDefaultRenderer = "Vulkan";
+#elif defined(BUILDSYSTEM_ENABLE_D3D12_SUPPORT)
+constexpr const char* szDefaultRenderer = "DX12";
 #else
 constexpr const char* szDefaultRenderer = "DX11";
 #endif
@@ -239,7 +241,7 @@ void ezGameApplication::Init_SetupGraphicsDevice()
 {
   ezGALDeviceCreationDescription DeviceInit;
 
-#if EZ_ENABLED(EZ_COMPILE_FOR_DEBUG)
+#if EZ_ENABLED(EZ_COMPILE_FOR_DEBUG) || EZ_ENABLED(EZ_COMPILE_FOR_DEVELOPMENT)
   DeviceInit.m_bDebugDevice = true;
 #endif
 

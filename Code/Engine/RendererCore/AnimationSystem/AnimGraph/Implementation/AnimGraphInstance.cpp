@@ -22,6 +22,7 @@ void ezAnimGraphInstance::Configure(const ezAnimGraph& animGraph)
   m_pAnimGraph = &animGraph;
 
   m_InstanceData = m_pAnimGraph->GetInstanceDataAlloator().AllocateAndConstruct();
+  m_ActiveNodes.SetCount(animGraph.GetNodes().GetCount(), false);
 
   // EXTEND THIS if a new type is introduced
   m_pTriggerInputPinStates = (ezInt8*)ezInstanceDataAllocator::GetInstanceData(m_InstanceData.GetByteBlobPtr(), m_pAnimGraph->m_uiPinInstanceDataOffset[ezAnimGraphPin::Type::Trigger]);
@@ -51,8 +52,16 @@ void ezAnimGraphInstance::Update(ezAnimController& ref_controller, ezTime diff, 
     }
   }
 
+  for (ezUInt32 i = 0; i < m_ActiveNodes.GetCount(); ++i)
+  {
+    m_ActiveNodes[i] = false;
+  }
+
+  ezUInt32 uiNodeIdx = 0;
   for (const auto& pNode : m_pAnimGraph->GetNodes())
   {
+    m_ActiveNodes[uiNodeIdx] = true;
     pNode->Step(ref_controller, *this, diff, pSekeltonResource, pTarget);
+    ++uiNodeIdx;
   }
 }

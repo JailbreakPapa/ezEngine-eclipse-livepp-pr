@@ -236,6 +236,7 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
       {
         auto* cb = ezRenderContext::GetConstantBufferData<ezGPUParticleConstants>(m_hConstantBuffer);
         cb->GPUPartDeltaTime = (float)ezClock::GetGlobalClock()->GetTimeDiff().GetSeconds();
+        cb->GPUPartTotalTime = (float)ezClock::GetGlobalClock()->GetAccumulatedTime().GetSeconds();
         cb->GPUPartMaxParticles = sys.m_uiMaxParticles;
         cb->GPUPartGravity = sys.m_fGravity;
         cb->GPUPartDragCoefficient = sys.m_fDragCoefficient;
@@ -256,6 +257,15 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
         cb->GPUPartMaxTrailPoints = sys.m_uiMaxTrailPoints;
         cb->GPUPartTrailWriteIndex = sys.m_uiTrailWriteIndex;
         cb->GPUPartVelocityStretch = sys.m_fVelocityStretch;
+        cb->GPUPartUseColorGradientTexture = (sys.m_bHasColorGradient && !sys.m_hColorGradientTexture.IsInvalidated()) ? 1 : 0;
+        cb->GPUPartSizeOverLifeKeyframes0.Set(sys.m_vSizeKeyframes0.x, sys.m_vSizeKeyframes0.y, sys.m_vSizeKeyframes0.z, sys.m_vSizeKeyframes0.w);
+        cb->GPUPartSizeOverLifeKeyframes1.Set(sys.m_vSizeKeyframes1.x, sys.m_vSizeKeyframes1.y, sys.m_vSizeKeyframes1.z, sys.m_vSizeKeyframes1.w);
+        cb->GPUPartNoiseStrength = sys.m_fNoiseStrength;
+        cb->GPUPartNoiseFrequency = sys.m_fNoiseFrequency;
+        cb->GPUPartNoiseSpeed = sys.m_fNoiseSpeed;
+        cb->GPUPartSimulateInLocalSpace = sys.m_bSimulateInLocalSpace ? 1 : 0;
+        cb->GPUPartObjectToWorldMatrix = sys.m_ObjectToWorldMatrix;
+        cb->GPUPartWorldToObjectMatrix = sys.m_WorldToObjectMatrix;
       }
 
       ezBindGroupBuilder& bindGroup = renderViewContext.m_pRenderContext->GetBindGroup();
@@ -272,6 +282,11 @@ void ezGPUParticlePass::Execute(const ezRenderViewContext& renderViewContext, co
       if (sys.m_uiGPURenderType == 3 && !sys.m_hTrailPositionBuffer.IsInvalidated()) // Trail
       {
         bindGroup.BindBuffer("gpuTrailPositions", sys.m_hTrailPositionBuffer);
+      }
+
+      if (sys.m_bHasColorGradient && !sys.m_hColorGradientTexture.IsInvalidated())
+      {
+        bindGroup.BindTexture("ColorGradientTexture", sys.m_hColorGradientTexture);
       }
 
       SetGPUParticleType();

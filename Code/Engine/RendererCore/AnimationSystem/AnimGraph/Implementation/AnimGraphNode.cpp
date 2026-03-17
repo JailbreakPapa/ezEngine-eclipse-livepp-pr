@@ -22,20 +22,21 @@ ezAnimGraphNode::~ezAnimGraphNode() = default;
 
 ezResult ezAnimGraphNode::SerializeNode(ezStreamWriter& stream) const
 {
-  stream.WriteVersion(1);
+  stream.WriteVersion(2);
 
-  // no need to serialize this, not used at runtime
-  // stream << m_CustomNodeTitle;
+  stream << m_uiDebugIndex;
 
   return EZ_SUCCESS;
 }
 
 ezResult ezAnimGraphNode::DeserializeNode(ezStreamReader& stream)
 {
-  stream.ReadVersion(1);
+  const auto uiVersion = stream.ReadVersion(2);
 
-  // no need to serialize this, not used at runtime
-  // stream >> m_CustomNodeTitle;
+  if (uiVersion >= 2)
+  {
+    stream >> m_uiDebugIndex;
+  }
 
   return EZ_SUCCESS;
 }

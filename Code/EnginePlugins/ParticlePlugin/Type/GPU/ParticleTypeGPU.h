@@ -1,5 +1,8 @@
 #pragma once
 
+#include <Foundation/Tracks/ColorGradient.h>
+#include <Foundation/Tracks/Curve1D.h>
+#include <Foundation/Tracks/CurveEditData.h>
 #include <ParticlePlugin/Type/ParticleType.h>
 #include <RendererFoundation/RendererFoundationDLL.h>
 
@@ -39,6 +42,21 @@ public:
   ezEnum<ezGPUParticleRenderType> m_GPURenderType;
   ezUInt32 m_uiMaxTrailPoints = 16;
   float m_fVelocityStretch = 1.0f;
+
+  // Feature 2: Size Curve Over Life
+  ezSingleCurveData m_SizeCurve;
+  mutable ezCurve1D m_RuntimeSizeCurve;
+
+  // Feature 3: Color Gradient Over Life
+  ezColorGradient m_ColorGradient;
+
+  // Feature 4: Noise/Turbulence
+  float m_fNoiseStrength = 0.0f;
+  float m_fNoiseFrequency = 1.0f;
+  float m_fNoiseSpeed = 0.5f;
+
+  // Feature 5: Local-Space Simulation
+  bool m_bSimulateInLocalSpace = false;
 };
 
 class EZ_PARTICLEPLUGIN_DLL ezParticleTypeGPU final : public ezParticleType
@@ -74,6 +92,23 @@ public:
   ezUInt32 m_uiMaxTrailPoints = 16;
   float m_fVelocityStretch = 1.0f;
 
+  // Feature 2: Size Curve Over Life — 8 keyframes sampled from the curve
+  ezVec4 m_vSizeKeyframes0 = ezVec4(1.0f, 0.857f, 0.714f, 0.571f);
+  ezVec4 m_vSizeKeyframes1 = ezVec4(0.429f, 0.286f, 0.143f, 0.0f);
+
+  // Feature 3: Color Gradient Over Life — baked 256-wide LUT texture
+  ezColorGradient m_ColorGradient;
+  mutable ezGALTextureHandle m_hColorGradientTexture;
+  mutable bool m_bColorGradientDirty = true;
+
+  // Feature 4: Noise/Turbulence
+  float m_fNoiseStrength = 0.0f;
+  float m_fNoiseFrequency = 1.0f;
+  float m_fNoiseSpeed = 0.5f;
+
+  // Feature 5: Local-Space Simulation
+  bool m_bSimulateInLocalSpace = false;
+
 protected:
   friend class ezParticleTypeGPUFactory;
 
@@ -81,6 +116,7 @@ protected:
 
   void EnsureGPUBuffers() const;
   void DestroyGPUBuffers();
+  void BakeColorGradientTexture() const;
 
   ezProcessingStream* m_pStreamPosition = nullptr;
   ezProcessingStream* m_pStreamVelocity = nullptr;

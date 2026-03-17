@@ -165,8 +165,15 @@ uint GetPointShadowFaceIndex(float3 dir)
 float SampleShadow(float3 shadowPosition, float2x2 randomRotation, float penumbraSize)
 {
 #if SHADOW_QUALITY == 0 // LOW
-  // Low: 5-tap PCF with fixed kernel, no blocker search
-  const float2 offsets[] = {
+  // Low: 4-sample blocker search + 5-sample variable-width PCF (lightweight PCSS)
+  const float2 blockerOffsets[] = {
+    {0.25f, 0.0f},
+    {-0.25f, 0.0f},
+    {0.0f, 0.25f},
+    {0.0f, -0.25f},
+  };
+
+  const float2 filterOffsets[] = {
     {0.0f, 0.0f},
     {1.0f, 0.0f},
     {-1.0f, 0.0f},
@@ -174,11 +181,32 @@ float SampleShadow(float3 shadowPosition, float2x2 randomRotation, float penumbr
     {0.0f, -1.0f},
   };
 
-  float filterSize = penumbraSize * 0.5;
-  float shadowTerm = 0.0;
-  [unroll] for (int i = 0; i < 5; ++i)
+  // Step 1: Blocker search (4 samples)
+  float searchRadius = penumbraSize * 2.0;
+  float blockerSum = 0.0;
+  float blockerCount = 0.0;
+  [unroll] for (int i = 0; i < 4; ++i)
   {
-    float2 offset = mul(randomRotation, offsets[i]) * filterSize;
+    float2 offset = mul(randomRotation, blockerOffsets[i]) * searchRadius;
+    float sampledDepth = ShadowAtlasTexture.SampleLevel(PointClampSampler, shadowPosition.xy + offset, 0).r;
+    if (sampledDepth < shadowPosition.z)
+    {
+      blockerSum += sampledDepth;
+      blockerCount += 1.0;
+    }
+  }
+  if (blockerCount < 0.5) return 1.0; // No blockers — fully lit
+
+  // Step 2: Penumbra estimation
+  float avgBlockerDepth = blockerSum / blockerCount;
+  float estimatedPenumbra = penumbraSize * (shadowPosition.z - avgBlockerDepth) / max(avgBlockerDepth, 0.0001);
+  estimatedPenumbra = clamp(estimatedPenumbra, penumbraSize * 0.1, searchRadius);
+
+  // Step 3: Variable-width PCF (5 samples)
+  float shadowTerm = 0.0;
+  [unroll] for (int j = 0; j < 5; ++j)
+  {
+    float2 offset = mul(randomRotation, filterOffsets[j]) * estimatedPenumbra;
     shadowTerm += ShadowAtlasTexture.SampleCmpLevelZero(ShadowSampler, shadowPosition.xy + offset, shadowPosition.z);
   }
   return shadowTerm / 5.0;
@@ -765,7 +793,104 @@ AccumulatedLight CalculateLighting(ezMaterialData matData, ezPerClusterData clus
 #endif
       }
     }
-    else // Fill Light
+    else if (type >= LIGHT_TYPE_RECT) // Area Lights (rect and tube)
+    {
+      float2 dims = GetAreaLightDimensions(lightData);
+      float range2 = 1.0 / lightData.invSqrAttRadius;
+
+      float3 lightColor = GetLightColor(lightData);
+      float shadowTerm = 1.0;
+      float subsurfaceShadow = 1.0;
+
+      AccumulatedLight areaLight;
+      if (type == LIGHT_TYPE_RECT)
+      {
+        float3 lightForward = GetLightDirection(lightData);
+        float3 lightRight = GetAreaLightRightDir(lightData);
+        float3 lightUp = GetAreaLightUpDir(lightData);
+        float halfWidth = dims.x * 0.5;
+        float halfHeight = dims.y * 0.5;
+
+        // Closest point on rect for attenuation
+        float3 closestOnPlane = PointOnPlane(matData.worldPosition, lightData.position, lightForward);
+        float3 toClosest = closestOnPlane - lightData.position;
+        float2 planeCoord = float2(dot(toClosest, lightRight), dot(toClosest, lightUp));
+        float2 clamped = float2(
+          clamp(planeCoord.x, -halfWidth, halfWidth),
+          clamp(planeCoord.y, -halfHeight, halfHeight));
+        float3 rectPoint = lightData.position + lightRight * clamped.x + lightUp * clamped.y;
+        float3 Lunnorm = rectPoint - matData.worldPosition;
+        float dist2 = dot(Lunnorm, Lunnorm);
+
+        float attenuation = AttenuationPointLight(dist2, range2);
+
+        [branch] if (attenuation > 0.0f)
+        {
+          // Energy normalization: diffuse scales by area * PI (Frostbite)
+          float lightArea = dims.x * dims.y;
+          float3 diffuseColor = lightColor * (lightArea * PI);
+          float3 specularColor = lightColor;
+
+          attenuation *= lightData.intensity;
+
+          [branch] if (lightData.shadowDataOffsetAndFadeOut != 0)
+          {
+            float3 debugColor;
+            float3 lightDir = normalize(lightData.position - matData.worldPosition);
+            float distanceToLight = dist2 * lightData.invSqrAttRadius;
+            shadowTerm = CalculateShadowTerm(matData.worldPosition, matData.vertexNormal, lightDir, distanceToLight, LIGHT_TYPE_POINT, lightData.shadowDataOffsetAndFadeOut, noise, randomRotation, 1.0, subsurfaceShadow, debugColor);
+          }
+
+          areaLight = RectLightShading(matData, viewVector, lightData.position,
+            lightForward, lightRight, lightUp, halfWidth, halfHeight);
+
+          totalLight.diffuseLight += areaLight.diffuseLight * diffuseColor * (attenuation * shadowTerm);
+          totalLight.specularLight += areaLight.specularLight * specularColor * (attenuation * shadowTerm * lightData.specularMultiplier);
+        }
+      }
+      else // LIGHT_TYPE_TUBE
+      {
+        float3 tubeAxis = GetLightDirection(lightData);
+        float halfLength = dims.x * 0.5;
+        float radius = dims.y;
+
+        // Closest point on tube axis for attenuation
+        float3 endA = lightData.position - tubeAxis * halfLength;
+        float3 endB = lightData.position + tubeAxis * halfLength;
+        float3 closestOnAxis = ClosestPointOnSegment(matData.worldPosition, endA, endB);
+        float3 Lunnorm = closestOnAxis - matData.worldPosition;
+        float dist2 = dot(Lunnorm, Lunnorm);
+
+        float attenuation = AttenuationPointLight(dist2, range2);
+
+        [branch] if (attenuation > 0.0f)
+        {
+          attenuation *= lightData.intensity;
+
+          // Energy normalization for sphere radius
+          if (radius > 0)
+          {
+            float sphereVol = (4.0 / 3.0) * PI * radius * radius * radius;
+            lightColor /= max(1.0, sphereVol);
+          }
+
+          [branch] if (lightData.shadowDataOffsetAndFadeOut != 0)
+          {
+            float3 debugColor;
+            float3 lightDir = normalize(lightData.position - matData.worldPosition);
+            float distanceToLight = dist2 * lightData.invSqrAttRadius;
+            shadowTerm = CalculateShadowTerm(matData.worldPosition, matData.vertexNormal, lightDir, distanceToLight, LIGHT_TYPE_POINT, lightData.shadowDataOffsetAndFadeOut, noise, randomRotation, 1.0, subsurfaceShadow, debugColor);
+          }
+
+          areaLight = TubeLightShading(matData, viewVector, lightData.position,
+            tubeAxis, halfLength, radius);
+
+          AccumulateLight(totalLight, areaLight, lightColor * (attenuation * shadowTerm), lightData.specularMultiplier);
+        }
+      }
+    }
+    // TODO(Mikael A.): Add support for area light cookies (cookie sampling would need to be moved into the area light functions)
+    else // Fill Light (LIGHT_TYPE_FILL_ADDITIVE and LIGHT_TYPE_FILL_MODULATE_INDIRECT)
     {
       EvaluateFillLight(matData.worldPosition, matData.worldNormal, matData.diffuseColor, 1.0, lightData, type, totalLight.diffuseLight, indirectLightModulation);
     }
@@ -804,6 +929,7 @@ AccumulatedLight CalculateLighting(ezMaterialData matData, ezPerClusterData clus
 
   totalLight.specularLight += specularColor * indirectLightModulation * reflection * occlusion;
 
+  // NOTE(Mikael A.): ???
   // enable once we have proper sky visibility
   /*#if defined(USE_MATERIAL_SUBSURFACE_COLOR)
     skyLight = EvaluateAmbientCube(SkyIrradianceTexture, SkyIrradianceIndex, -matData.worldNormal).rgb;

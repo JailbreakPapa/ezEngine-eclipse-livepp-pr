@@ -2,9 +2,15 @@
 
 #include <EditorPluginParticle/Actions/ParticleActions.h>
 #include <EditorPluginParticle/ParticleEffectAsset/ParticleEffectAsset.h>
+#include <EditorPluginParticle/ParticleEffectAsset/ParticleToGPUConversionDlg.moc.h>
 #include <GuiFoundation/Action/ActionManager.h>
 
+#include <QApplication>
+
 EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleAction, 1, ezRTTINoAllocator)
+EZ_END_DYNAMIC_REFLECTED_TYPE;
+
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleConvertToGPUAction, 1, ezRTTINoAllocator)
 EZ_END_DYNAMIC_REFLECTED_TYPE;
 
 ezActionDescriptorHandle ezParticleActions::s_hCategory;
@@ -14,6 +20,7 @@ ezActionDescriptorHandle ezParticleActions::s_hAutoRestart;
 ezActionDescriptorHandle ezParticleActions::s_hSimulationSpeedMenu;
 ezActionDescriptorHandle ezParticleActions::s_hSimulationSpeed[10];
 ezActionDescriptorHandle ezParticleActions::s_hRenderVisualizers;
+ezActionDescriptorHandle ezParticleActions::s_hConvertToGPU;
 
 
 void ezParticleActions::RegisterActions()
@@ -49,6 +56,9 @@ void ezParticleActions::RegisterActions()
     "PFX.Speed.10", ezActionScope::Document, "Particles", "Ctrl+0", ezParticleAction, ezParticleAction::ActionType::SimulationSpeed, 10.0f);
   s_hRenderVisualizers = EZ_REGISTER_ACTION_1(
     "PFX.Render.Visualizers", ezActionScope::Document, "Particles", "V", ezParticleAction, ezParticleAction::ActionType::RenderVisualizers);
+  s_hConvertToGPU =
+    EZ_REGISTER_ACTION_0("PFX.ConvertToGPU", ezActionScope::Document, "Particles", "", ezParticleConvertToGPUAction, ezParticleAction::ActionType::ConvertToGPU);
+
 }
 
 void ezParticleActions::UnregisterActions()
@@ -59,6 +69,7 @@ void ezParticleActions::UnregisterActions()
   ezActionManager::UnregisterAction(s_hAutoRestart);
   ezActionManager::UnregisterAction(s_hSimulationSpeedMenu);
   ezActionManager::UnregisterAction(s_hRenderVisualizers);
+  ezActionManager::UnregisterAction(s_hConvertToGPU);
 
   for (int i = 0; i < EZ_ARRAY_SIZE(s_hSimulationSpeed); ++i)
     ezActionManager::UnregisterAction(s_hSimulationSpeed[i]);
@@ -85,6 +96,15 @@ void ezParticleActions::MapActions(ezStringView sMapping)
     pMap->MapAction(s_hSimulationSpeed[i], sSubPath, i + 1.0f);
 
   pMap->MapAction(s_hRenderVisualizers, szSubPath, 4.0f);
+  pMap->MapAction(s_hConvertToGPU, szSubPath, 5.0f);
+}
+
+void ezParticleActions::MapMenuBarActions(ezStringView sMapping)
+{
+  ezActionMap* pMap = ezActionMapManager::GetActionMap(sMapping);
+  EZ_ASSERT_DEV(pMap != nullptr, "The given mapping ('{0}') does not exist, mapping the actions failed!", sMapping);
+
+  pMap->MapAction(s_hConvertToGPU, "G.Tools", 20.0f);
 }
 
 ezParticleAction::ezParticleAction(const ezActionContext& context, const char* szName, ezParticleAction::ActionType type, float fSimSpeed)
@@ -114,6 +134,10 @@ ezParticleAction::ezParticleAction(const ezActionContext& context, const char* s
       SetCheckable(true);
       SetIconPath(":/EditorFramework/Icons/Visualizers.svg");
       SetChecked(m_pEffectDocument->GetRenderVisualizers());
+      break;
+
+    case ActionType::ConvertToGPU:
+      SetIconPath(":/EditorPluginParticle/Icons/Convert.svg");
       break;
 
     default:
@@ -151,6 +175,10 @@ void ezParticleAction::Execute(const ezVariant& value)
 
     case ActionType::RenderVisualizers:
       m_pEffectDocument->SetRenderVisualizers(!m_pEffectDocument->GetRenderVisualizers());
+      return;
+    case ActionType::ConvertToGPU:
+      ezQtParticleToGPUConversionDlg dlg(QApplication::activeWindow());
+      dlg.exec();
       return;
   }
 }
@@ -195,4 +223,16 @@ void ezParticleAction::UpdateState()
     SetCheckable(true);
     SetChecked(m_pEffectDocument->GetRenderVisualizers());
   }
+}
+
+ezParticleConvertToGPUAction::ezParticleConvertToGPUAction(const ezActionContext& context, const char* szName)
+  : ezButtonAction(context, szName, false, "")
+{
+  SetIconPath(":/EditorPluginParticle/Icons/Convert.svg");
+}
+
+void ezParticleConvertToGPUAction::Execute(const ezVariant& value)
+{
+  ezQtParticleToGPUConversionDlg dlg(QApplication::activeWindow());
+  dlg.exec();
 }

@@ -14,6 +14,8 @@
 #define LIGHT_TYPE_DIR 2
 #define LIGHT_TYPE_FILL_ADDITIVE 3
 #define LIGHT_TYPE_FILL_MODULATE_INDIRECT 4
+#define LIGHT_TYPE_RECT 5
+#define LIGHT_TYPE_TUBE 6
 
 struct EZ_SHADER_STRUCT ezPerLightData
 {
@@ -47,6 +49,23 @@ struct EZ_SHADER_STRUCT ezPerLightData
   float3 GetLightDirection(ezPerLightData data)
   {
     return normalize(RGB10ToFloat3(data.direction) * 2.0 - 1.0);
+  }
+
+  float2 GetAreaLightDimensions(ezPerLightData data)
+  {
+    return RG16FToFloat2(data.spotOrFillParams);
+  }
+
+  float3 GetAreaLightRightDir(ezPerLightData data)
+  {
+    return float3(RG16FToFloat2(data.cookieParams1), f16tof32(data.cookieParams0 >> 16));
+  }
+
+  float3 GetAreaLightUpDir(ezPerLightData data)
+  {
+    float3 forward = GetLightDirection(data);
+    float3 right = GetAreaLightRightDir(data);
+    return cross(right, forward);
   }
 #else
   static_assert(sizeof(ezPerLightData) == 48);

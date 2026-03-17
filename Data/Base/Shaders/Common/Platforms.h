@@ -7,5 +7,6 @@
 #endif
 
 #include "Platform_D3D.h"
+#include "Platform_DX12.h"
 #include "Platform_Vulkan.h"
 #include "Platform_Web.h"

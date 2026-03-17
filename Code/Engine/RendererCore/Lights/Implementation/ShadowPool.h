@@ -5,6 +5,7 @@
 class ezDirectionalLightComponent;
 class ezPointLightComponent;
 class ezSpotLightComponent;
+class ezLightComponent;
 class ezGALTextureHandle;
 class ezGALBufferHandle;
 class ezView;
@@ -17,6 +18,10 @@ public:
   static ezUInt32 AddDirectionalLight(const ezDirectionalLightComponent* pDirLight, const ezView* pReferenceView);
   static ezUInt32 AddPointLight(const ezPointLightComponent* pPointLight, float fScreenSpaceSize, const ezView* pReferenceView);
   static ezUInt32 AddSpotLight(const ezSpotLightComponent* pSpotLight, float fScreenSpaceSize, const ezView* pReferenceView);
+
+  /// Adds point-light-style cube map shadows for an area light (rect or tube).
+  /// Uses the light's position as shadow origin and the given effective range as the far plane.
+  static ezUInt32 AddAreaLightAsPointLight(const ezLightComponent* pLight, float fEffectiveRange, float fScreenSpaceSize, const ezView* pReferenceView);
 
   static ezGALTextureHandle GetShadowAtlasTexture();
   static ezGALBufferHandle GetShadowDataBuffer();

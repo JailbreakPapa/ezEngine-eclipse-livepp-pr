@@ -6,28 +6,12 @@
 #include <ParticlePlugin/System/ParticleSystemInstance.h>
 
 // clang-format off
-EZ_BEGIN_STATIC_REFLECTED_ENUM(ezParticleKillAttribute, 1)
-  EZ_ENUM_CONSTANT(ezParticleKillAttribute::PositionX),
-  EZ_ENUM_CONSTANT(ezParticleKillAttribute::PositionY),
-  EZ_ENUM_CONSTANT(ezParticleKillAttribute::PositionZ),
-  EZ_ENUM_CONSTANT(ezParticleKillAttribute::Speed),
-  EZ_ENUM_CONSTANT(ezParticleKillAttribute::Size),
-  EZ_ENUM_CONSTANT(ezParticleKillAttribute::ColorAlpha),
-EZ_END_STATIC_REFLECTED_ENUM;
-
-EZ_BEGIN_STATIC_REFLECTED_ENUM(ezParticleComparisonOp, 1)
-  EZ_ENUM_CONSTANT(ezParticleComparisonOp::Less),
-  EZ_ENUM_CONSTANT(ezParticleComparisonOp::LessEqual),
-  EZ_ENUM_CONSTANT(ezParticleComparisonOp::Greater),
-  EZ_ENUM_CONSTANT(ezParticleComparisonOp::GreaterEqual),
-EZ_END_STATIC_REFLECTED_ENUM;
-
-EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleBehaviorFactory_ConditionalKill, 1, ezRTTIDefaultAllocator<ezParticleBehaviorFactory_ConditionalKill>)
+EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleBehaviorFactory_ConditionalKill, 2, ezRTTIDefaultAllocator<ezParticleBehaviorFactory_ConditionalKill>)
 {
   EZ_BEGIN_PROPERTIES
   {
-    EZ_ENUM_MEMBER_PROPERTY("Attribute", ezParticleKillAttribute, m_Attribute),
-    EZ_ENUM_MEMBER_PROPERTY("Comparison", ezParticleComparisonOp, m_Comparison),
+    EZ_ENUM_MEMBER_PROPERTY("Attribute", ezParticleAttribute, m_Attribute)->AddAttributes(new ezDefaultValueAttribute((ezInt32)ezParticleAttribute::PositionZ)),
+    EZ_ENUM_MEMBER_PROPERTY("Comparison", ezComparisonOperator, m_Comparison)->AddAttributes(new ezDefaultValueAttribute((ezInt32)ezComparisonOperator::Less)),
     EZ_MEMBER_PROPERTY("Threshold", m_fThreshold),
   }
   EZ_END_PROPERTIES;
@@ -38,7 +22,11 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleBehavior_ConditionalKill, 1, ezRTTIDef
 EZ_END_DYNAMIC_REFLECTED_TYPE;
 // clang-format on
 
-ezParticleBehaviorFactory_ConditionalKill::ezParticleBehaviorFactory_ConditionalKill() = default;
+ezParticleBehaviorFactory_ConditionalKill::ezParticleBehaviorFactory_ConditionalKill()
+{
+  m_Attribute = ezParticleAttribute::PositionZ;
+  m_Comparison = ezComparisonOperator::Less;
+}
 
 const ezRTTI* ezParticleBehaviorFactory_ConditionalKill::GetBehaviorType() const
 {
@@ -56,7 +44,7 @@ void ezParticleBehaviorFactory_ConditionalKill::CopyBehaviorProperties(ezParticl
 
 void ezParticleBehaviorFactory_ConditionalKill::Save(ezStreamWriter& inout_stream) const
 {
-  const ezUInt8 uiVersion = 1;
+  const ezUInt8 uiVersion = 2;
   inout_stream << uiVersion;
 
   inout_stream << m_Attribute;
@@ -69,110 +57,77 @@ void ezParticleBehaviorFactory_ConditionalKill::Load(ezStreamReader& inout_strea
   ezUInt8 uiVersion = 0;
   inout_stream >> uiVersion;
 
-  EZ_ASSERT_DEV(uiVersion <= 1, "Invalid version {0}", uiVersion);
+  EZ_ASSERT_DEV(uiVersion <= 2, "Invalid version {0}", uiVersion);
 
-  inout_stream >> m_Attribute;
-  inout_stream >> m_Comparison;
-  inout_stream >> m_fThreshold;
+  if (uiVersion == 1)
+  {
+    // Old format used ezParticleKillAttribute and ezParticleComparisonOp
+    ezUInt8 uiOldAttr = 0;
+    ezUInt8 uiOldOp = 0;
+    inout_stream >> uiOldAttr;
+    inout_stream >> uiOldOp;
+    inout_stream >> m_fThreshold;
+
+    // Map old ezParticleKillAttribute to ezParticleAttribute
+    // Old: PositionX=0 PositionY=1 PositionZ=2 Speed=3 Size=4 ColorAlpha=5
+    // New: PositionX=0 PositionY=1 PositionZ=2 Speed=3 Size=4 LifeFraction=5 ColorR=6 ColorG=7 ColorB=8 ColorA=9
+    switch (uiOldAttr)
+    {
+      case 0: m_Attribute = ezParticleAttribute::PositionX; break;
+      case 1: m_Attribute = ezParticleAttribute::PositionY; break;
+      case 2: m_Attribute = ezParticleAttribute::PositionZ; break;
+      case 3: m_Attribute = ezParticleAttribute::Speed; break;
+      case 4: m_Attribute = ezParticleAttribute::Size; break;
+      case 5: m_Attribute = ezParticleAttribute::ColorA; break; // ColorAlpha -> ColorA
+      default: m_Attribute = ezParticleAttribute::PositionZ; break;
+    }
+
+    // Map old ezParticleComparisonOp to ezComparisonOperator
+    // Old: Less=0 LessEqual=1 Greater=2 GreaterEqual=3
+    // New: Equal=0 NotEqual=1 Less=2 LessEqual=3 Greater=4 GreaterEqual=5
+    switch (uiOldOp)
+    {
+      case 0: m_Comparison = ezComparisonOperator::Less; break;
+      case 1: m_Comparison = ezComparisonOperator::LessEqual; break;
+      case 2: m_Comparison = ezComparisonOperator::Greater; break;
+      case 3: m_Comparison = ezComparisonOperator::GreaterEqual; break;
+      default: m_Comparison = ezComparisonOperator::Less; break;
+    }
+  }
+  else
+  {
+    inout_stream >> m_Attribute;
+    inout_stream >> m_Comparison;
+    inout_stream >> m_fThreshold;
+  }
 }
 
 void ezParticleBehavior_ConditionalKill::CreateRequiredStreams()
 {
   CreateStream("Position", ezProcessingStream::DataType::Float4, &m_pStreamPosition, false);
+  CreateStream("Velocity", ezProcessingStream::DataType::Half4, &m_pStreamVelocity, false);
 }
 
 void ezParticleBehavior_ConditionalKill::QueryOptionalStreams()
 {
-  m_pStreamVelocity = GetOwnerSystem()->QueryStream("Velocity", ezProcessingStream::DataType::Half4);
   m_pStreamSize = GetOwnerSystem()->QueryStream("Size", ezProcessingStream::DataType::Half);
   m_pStreamColor = GetOwnerSystem()->QueryStream("Color", ezProcessingStream::DataType::Half4);
-}
-
-static float GetAttributeValue(
-  ezParticleKillAttribute::Enum attr,
-  const ezSimdVec4f& position,
-  const ezFloat16Vec4* pVelocity,
-  const ezFloat16* pSize,
-  const ezFloat16Vec4* pColor)
-{
-  switch (attr)
-  {
-    case ezParticleKillAttribute::PositionX:
-      return position.GetComponent<0>();
-    case ezParticleKillAttribute::PositionY:
-      return position.GetComponent<1>();
-    case ezParticleKillAttribute::PositionZ:
-      return position.GetComponent<2>();
-    case ezParticleKillAttribute::Speed:
-    {
-      if (pVelocity)
-        return static_cast<float>(pVelocity->w);
-      return 0.0f;
-    }
-    case ezParticleKillAttribute::Size:
-    {
-      if (pSize)
-        return static_cast<float>(*pSize);
-      return 0.0f;
-    }
-    case ezParticleKillAttribute::ColorAlpha:
-    {
-      if (pColor)
-        return static_cast<float>(pColor->w);
-      return 1.0f;
-    }
-    default:
-      return 0.0f;
-  }
-}
-
-static bool CompareValue(ezParticleComparisonOp::Enum op, float fValue, float fThreshold)
-{
-  switch (op)
-  {
-    case ezParticleComparisonOp::Less:
-      return fValue < fThreshold;
-    case ezParticleComparisonOp::LessEqual:
-      return fValue <= fThreshold;
-    case ezParticleComparisonOp::Greater:
-      return fValue > fThreshold;
-    case ezParticleComparisonOp::GreaterEqual:
-      return fValue >= fThreshold;
-    default:
-      return false;
-  }
+  m_pStreamLifeTime = GetOwnerSystem()->QueryStream("LifeTime", ezProcessingStream::DataType::Float2);
 }
 
 void ezParticleBehavior_ConditionalKill::Process(ezUInt64 uiNumElements)
 {
   EZ_PROFILE_SCOPE("PFX: ConditionalKill");
 
-  ezProcessingStreamIterator<ezSimdVec4f> itPosition(m_pStreamPosition, uiNumElements, 0);
-
-  const ezFloat16Vec4* pVelocityData = m_pStreamVelocity ? m_pStreamVelocity->GetData<ezFloat16Vec4>() : nullptr;
-  const ezFloat16* pSizeData = m_pStreamSize ? m_pStreamSize->GetData<ezFloat16>() : nullptr;
-  const ezFloat16Vec4* pColorData = m_pStreamColor ? m_pStreamColor->GetData<ezFloat16Vec4>() : nullptr;
-
-  ezUInt32 idx = 0;
-
-  while (!itPosition.HasReachedEnd())
+  for (ezUInt32 idx = 0; idx < (ezUInt32)uiNumElements; ++idx)
   {
-    const ezSimdVec4f pos = itPosition.Current();
+    const float fValue = ezReadParticleAttribute(m_Attribute, idx,
+      m_pStreamPosition, m_pStreamVelocity, m_pStreamSize, m_pStreamColor, m_pStreamLifeTime);
 
-    const float fValue = GetAttributeValue(
-      m_Attribute,
-      pos,
-      pVelocityData ? &pVelocityData[idx] : nullptr,
-      pSizeData ? &pSizeData[idx] : nullptr,
-      pColorData ? &pColorData[idx] : nullptr);
-
-    if (CompareValue(m_Comparison, fValue, m_fThreshold))
+    if (ezEvaluateParticleCondition(m_Comparison, fValue, m_fThreshold))
     {
       m_pStreamGroup->RemoveElement(idx);
     }
-
-    ++idx;
-    itPosition.Advance();
   }
 }
 

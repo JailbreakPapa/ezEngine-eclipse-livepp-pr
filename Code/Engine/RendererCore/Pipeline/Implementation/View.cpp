@@ -346,6 +346,9 @@ void ezView::ApplyPermutationVars()
   if (!m_bPermutationVarsDirty)
     return;
 
+  if (m_pRenderPipeline == nullptr)
+    return;
+
   m_pRenderPipeline->m_PermutationVars = m_PermutationVars;
   m_bPermutationVarsDirty = false;
 }
@@ -409,6 +412,9 @@ void ezView::ResetAllPropertyStates(ezMap<ezString, PropertyValue>& map)
 
 void ezView::ApplyRenderPassProperties()
 {
+  if (m_pRenderPipeline == nullptr)
+    return;
+
   for (auto it = m_PassProperties.GetIterator(); it.IsValid(); ++it)
   {
     auto& propertyValue = it.Value();
@@ -443,6 +449,9 @@ void ezView::ApplyRenderPassProperties()
 
 void ezView::ApplyExtractorProperties()
 {
+  if (m_pRenderPipeline == nullptr)
+    return;
+
   for (auto it = m_ExtractorProperties.GetIterator(); it.IsValid(); ++it)
   {
     if (!it.Value().m_bIsValid || !it.Value().m_bIsDirty)

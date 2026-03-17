@@ -158,6 +158,18 @@ public:
 
   const AnimClipInfo& GetAnimationClipInfo(ezTempHashedString sClipName) const;
 
+  /// Returns the active node flags from the specified graph instance, or nullptr if invalid.
+  const ezDynamicArray<bool>* GetActiveNodes(ezUInt32 uiGraphIdx = 0) const;
+
+  /// Returns the number of graph instances loaded.
+  ezUInt32 GetNumGraphInstances() const { return m_Instances.GetCount(); }
+
+  /// Returns the resource handle for the specified graph instance.
+  const ezAnimGraphResourceHandle& GetGraphResourceHandle(ezUInt32 uiGraphIdx = 0) const;
+
+  /// Returns the graph instance for the specified index, or nullptr if invalid.
+  const ezAnimGraphInstance* GetGraphInstance(ezUInt32 uiGraphIdx = 0) const;
+
   /// Sets which animation clip is used for the named animation.
   ///
   /// Should only be called right at the start or when it is absolutely certain that an animation clip isn't in use right now,

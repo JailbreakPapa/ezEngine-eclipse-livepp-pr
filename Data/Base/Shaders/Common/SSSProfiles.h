@@ -140,6 +140,37 @@ static const SSSKernelSample MilkKernel[SSS_MAX_KERNEL_SIZE] =
   { float3(0.001, 0.001, 0.001), -2.960 },
 };
 
+// Foliage: thin leaves with strong green transmission and tight blur
+// Optimized for backlit translucency common in vegetation
+static const SSSKernelSample FoliageKernel[SSS_MAX_KERNEL_SIZE] =
+{
+  { float3(0.320, 0.520, 0.280),  0.000 },  // Strong green center
+  { float3(0.042, 0.068, 0.035),  0.060 },
+  { float3(0.042, 0.068, 0.035), -0.060 },
+  { float3(0.035, 0.058, 0.028),  0.130 },
+  { float3(0.035, 0.058, 0.028), -0.130 },
+  { float3(0.028, 0.048, 0.022),  0.220 },
+  { float3(0.028, 0.048, 0.022), -0.220 },
+  { float3(0.022, 0.038, 0.017),  0.330 },
+  { float3(0.022, 0.038, 0.017), -0.330 },
+  { float3(0.016, 0.030, 0.013),  0.460 },
+  { float3(0.016, 0.030, 0.013), -0.460 },
+  { float3(0.012, 0.022, 0.010),  0.610 },
+  { float3(0.012, 0.022, 0.010), -0.610 },
+  { float3(0.008, 0.016, 0.007),  0.780 },
+  { float3(0.008, 0.016, 0.007), -0.780 },
+  { float3(0.006, 0.011, 0.005),  0.970 },
+  { float3(0.006, 0.011, 0.005), -0.970 },
+  { float3(0.004, 0.008, 0.004),  1.180 },
+  { float3(0.004, 0.008, 0.004), -1.180 },
+  { float3(0.003, 0.005, 0.003),  1.410 },
+  { float3(0.003, 0.005, 0.003), -1.410 },
+  { float3(0.002, 0.004, 0.002),  1.660 },
+  { float3(0.002, 0.004, 0.002), -1.660 },
+  { float3(0.001, 0.002, 0.001),  1.930 },
+  { float3(0.001, 0.002, 0.001), -1.930 },
+};
+
 // Select kernel based on profile index
 SSSKernelSample GetKernelSample(uint profileIndex, uint sampleIndex)
 {
@@ -149,6 +180,8 @@ SSSKernelSample GetKernelSample(uint profileIndex, uint sampleIndex)
     return JadeKernel[sampleIndex];
   else if (profileIndex == 3)
     return MilkKernel[sampleIndex];
+  else if (profileIndex == 4)
+    return FoliageKernel[sampleIndex];
   else
     return SkinKernel[sampleIndex]; // Default: skin
 }

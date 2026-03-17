@@ -15,16 +15,16 @@ EZ_BEGIN_COMPONENT_TYPE(ezVolumetricFogComponent, 2, ezComponentMode::Static)
   EZ_BEGIN_PROPERTIES
   {
     EZ_ACCESSOR_PROPERTY("Extents", GetExtents, SetExtents)->AddAttributes(new ezDefaultValueAttribute(ezVec3(10.0f)), new ezClampValueAttribute(ezVec3(0.0f), ezVariant())),
-    EZ_ACCESSOR_PROPERTY("Density", GetDensity, SetDensity)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.05f)),
+    EZ_ACCESSOR_PROPERTY("Density", GetDensity, SetDensity)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.5f)),
     EZ_ACCESSOR_PROPERTY("Anisotropy", GetAnisotropy, SetAnisotropy)->AddAttributes(new ezClampValueAttribute(-0.99f, 0.99f), new ezDefaultValueAttribute(0.3f)),
-    EZ_ACCESSOR_PROPERTY("HeightFalloff", GetHeightFalloff, SetHeightFalloff)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.1f)),
+    EZ_ACCESSOR_PROPERTY("HeightFalloff", GetHeightFalloff, SetHeightFalloff)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant()), new ezDefaultValueAttribute(0.0f)),
     EZ_ACCESSOR_PROPERTY("Albedo", GetAlbedo, SetAlbedo)->AddAttributes(new ezDefaultValueAttribute(ezColor::White)),
     EZ_ACCESSOR_PROPERTY("AmbientLight", GetAmbientLight, SetAmbientLight)->AddAttributes(new ezDefaultValueAttribute(ezColorGammaUB(ezColor(0.15f, 0.15f, 0.2f)))),
     EZ_ACCESSOR_PROPERTY("StartDistance", GetStartDistance, SetStartDistance)->AddAttributes(new ezClampValueAttribute(0.0f, ezVariant())),
     EZ_ACCESSOR_PROPERTY("NearPlane", GetNearPlane, SetNearPlane)->AddAttributes(new ezClampValueAttribute(0.1f, ezVariant()), new ezDefaultValueAttribute(0.5f)),
     EZ_ACCESSOR_PROPERTY("FarPlane", GetFarPlane, SetFarPlane)->AddAttributes(new ezClampValueAttribute(1.0f, ezVariant()), new ezDefaultValueAttribute(500.0f)),
     EZ_ACCESSOR_PROPERTY("TemporalBlendWeight", GetTemporalBlendWeight, SetTemporalBlendWeight)->AddAttributes(new ezClampValueAttribute(0.01f, 1.0f), new ezDefaultValueAttribute(0.05f)),
-    EZ_ACCESSOR_PROPERTY("FalloffExponent", GetFalloffExponent, SetFalloffExponent)->AddAttributes(new ezClampValueAttribute(0.1f, 10.0f), new ezDefaultValueAttribute(2.0f)),
+    EZ_ACCESSOR_PROPERTY("FalloffExponent", GetFalloffExponent, SetFalloffExponent)->AddAttributes(new ezClampValueAttribute(0.1f, 10.0f), new ezDefaultValueAttribute(1.0f)),
   }
   EZ_END_PROPERTIES;
   EZ_BEGIN_MESSAGEHANDLERS
@@ -178,6 +178,7 @@ void ezVolumetricFogComponent::OnMsgExtractRenderData(ezMsgExtractRenderData& ms
   pRenderData->m_fTemporalBlendWeight = m_fTemporalBlendWeight;
   pRenderData->m_GlobalTransform = GetOwner()->GetGlobalTransform();
   pRenderData->m_vHalfExtents = m_vExtents * 0.5f;
+  pRenderData->m_fFalloffExponent = m_fFalloffExponent;
 
   msg.AddRenderData(pRenderData, ezDefaultRenderDataCategories::Light, ezRenderData::Caching::IfStatic);
 }

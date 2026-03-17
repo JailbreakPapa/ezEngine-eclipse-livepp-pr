@@ -24,7 +24,7 @@ public:
 
   /// The attribute to test the condition against
   ezEnum<ezParticleAttribute> m_ConditionInput;
-  ezEnum<ezParticleConditionOp> m_Comparison;
+  ezEnum<ezComparisonOperator> m_Comparison;
   float m_fThreshold = 0.0f;
 
   /// The attribute to write the result to
@@ -39,7 +39,7 @@ class EZ_PARTICLEPLUGIN_DLL ezParticleBehavior_If final : public ezParticleBehav
 
 public:
   ezEnum<ezParticleAttribute> m_ConditionInput;
-  ezEnum<ezParticleConditionOp> m_Comparison;
+  ezEnum<ezComparisonOperator> m_Comparison;
   float m_fThreshold = 0.0f;
 
   ezEnum<ezParticleAttribute> m_OutputAttribute;

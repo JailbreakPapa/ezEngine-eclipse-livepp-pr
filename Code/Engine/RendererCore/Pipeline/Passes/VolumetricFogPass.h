@@ -65,4 +65,5 @@ protected:
   bool m_bFroxelTexturesDirty = true;
 
   ezMat4 m_PrevViewProjectionMatrix = ezMat4::MakeIdentity();
+  bool m_bFirstFrame = true;
 };

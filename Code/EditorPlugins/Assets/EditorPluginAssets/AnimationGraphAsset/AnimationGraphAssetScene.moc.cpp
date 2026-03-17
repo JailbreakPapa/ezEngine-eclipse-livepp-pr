@@ -211,18 +211,40 @@ void ezQtAnimationGraphAssetScene::SetNodeActivity(const ezSet<ezUuid>& activeNo
 
   m_PreviousActiveNodes = activeNodes;
 
-  // Only update nodes whose active state actually changed
+  // Count how many visible nodes are active vs inactive.
+  // In blend trees, all nodes are evaluated every frame, so all are "active".
+  // Activity feedback is only useful when there's a real distinction.
+  ezUInt32 uiVisibleCount = 0;
+  ezUInt32 uiActiveCount = 0;
+  for (auto it = m_Nodes.GetIterator(); it.IsValid(); ++it)
+  {
+    if (!it.Value()->isVisible())
+      continue;
+    uiVisibleCount++;
+    if (activeNodes.Contains(it.Key()->GetGuid()))
+      uiActiveCount++;
+  }
+
+  // If all visible nodes are active (blend tree) or none are, skip activity visuals
+  const bool bShowActivity = uiActiveCount > 0 && uiActiveCount < uiVisibleCount;
+
   for (auto it = m_Nodes.GetIterator(); it.IsValid(); ++it)
   {
     ezQtVisualGraphNode* pQtNode = it.Value();
     if (!pQtNode->isVisible())
       continue;
 
-    const bool bActive = activeNodes.Contains(it.Key()->GetGuid());
-    pQtNode->SetActive(bActive);
+    if (bShowActivity)
+    {
+      const bool bActive = activeNodes.Contains(it.Key()->GetGuid());
+      pQtNode->SetActive(bActive);
+    }
+    else
+    {
+      pQtNode->SetActive(true); // Reset all to full visibility
+    }
   }
 
-  // Update connection activity and repaint only changed or active connections
   for (auto it = m_Connections.GetIterator(); it.IsValid(); ++it)
   {
     ezQtVisualGraphConnection* pQtCon = it.Value();
@@ -233,14 +255,17 @@ void ezQtAnimationGraphAssetScene::SetNodeActivity(const ezSet<ezUuid>& activeNo
     if (pCon == nullptr)
       continue;
 
-    const ezDocumentObject* pSrcNode = pCon->GetSourcePin().GetParent();
-    const ezDocumentObject* pDstNode = pCon->GetTargetPin().GetParent();
+    bool bActive = false;
+    if (bShowActivity)
+    {
+      const ezDocumentObject* pSrcNode = pCon->GetSourcePin().GetParent();
+      const ezDocumentObject* pDstNode = pCon->GetTargetPin().GetParent();
+      bActive = activeNodes.Contains(pSrcNode->GetGuid()) && activeNodes.Contains(pDstNode->GetGuid());
+    }
 
-    const bool bActive = activeNodes.Contains(pSrcNode->GetGuid()) && activeNodes.Contains(pDstNode->GetGuid());
     const bool bChanged = (pQtCon->m_bIsActive != bActive);
     pQtCon->m_bIsActive = bActive;
 
-    // Repaint if state changed, or if active (for animated dots)
     if (bChanged || bActive)
       pQtCon->update();
   }

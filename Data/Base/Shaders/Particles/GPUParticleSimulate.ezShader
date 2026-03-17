@@ -10,6 +10,7 @@ GPU_PARTICLE_TYPE
 #include <Shaders/Common/Common.h>
 #include <Shaders/Common/GlobalConstants.h>
 #include <Shaders/Common/CameraConstantsAccess.h>
+#include <Shaders/Common/NoiseHelpers.h>
 #include "GPUParticleConstants.h"
 
 struct ezGPUParticle
@@ -32,6 +33,7 @@ RWStructuredBuffer<ezGPUParticle> gpuParticlesCurrent;
 RWByteAddressBuffer gpuParticleCounters;
 Texture2D<float> SceneDepth;
 Texture3D<float> SDFTexture;
+Texture2D ColorGradientTexture;
 
 #if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
 RWStructuredBuffer<float4> gpuTrailPositions;
@@ -88,7 +90,35 @@ void HandleCollisionReaction(inout ezGPUParticle p, float3 prevPosition, float3 
 
 float4 EvaluateColorOverLife(float normalizedAge)
 {
+  if (GPUPartUseColorGradientTexture)
+  {
+    return ColorGradientTexture.SampleLevel(LinearClampSampler, float2(normalizedAge, 0.5), 0);
+  }
   return lerp(GPUPartColorOverLifeStart, GPUPartColorOverLifeEnd, normalizedAge);
+}
+
+// Evaluate size from 8 evenly-spaced keyframes packed in two float4s
+float EvaluateSizeOverLife(float normalizedAge)
+{
+  float t = saturate(normalizedAge) * 7.0;
+  int idx = (int)t;
+  float frac_t = t - (float)idx;
+
+  // Keyframes in two float4s: [0..3] and [4..7]
+  float values[8];
+  values[0] = GPUPartSizeOverLifeKeyframes0.x;
+  values[1] = GPUPartSizeOverLifeKeyframes0.y;
+  values[2] = GPUPartSizeOverLifeKeyframes0.z;
+  values[3] = GPUPartSizeOverLifeKeyframes0.w;
+  values[4] = GPUPartSizeOverLifeKeyframes1.x;
+  values[5] = GPUPartSizeOverLifeKeyframes1.y;
+  values[6] = GPUPartSizeOverLifeKeyframes1.z;
+  values[7] = GPUPartSizeOverLifeKeyframes1.w;
+
+  int idx0 = min(idx, 7);
+  int idx1 = min(idx + 1, 7);
+
+  return lerp(values[idx0], values[idx1], frac_t);
 }
 
 [numthreads(GPU_PARTICLE_SIM_THREAD_GROUP_SIZE, 1, 1)]
@@ -122,29 +152,64 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
   float normalizedAge = 1.0 - p.Life;
 
+  // For local-space: transform to world space for physics
+  float3 worldPos = p.Position;
+  float3 worldVel = p.Velocity;
+  if (GPUPartSimulateInLocalSpace)
+  {
+    worldPos = mul(GPUPartObjectToWorldMatrix, float4(p.Position, 1.0)).xyz;
+    worldVel = mul((float3x3)GPUPartObjectToWorldMatrix, p.Velocity);
+  }
+
   // Gravity (Y-up)
-  p.Velocity.y -= GPUPartGravity * GPUPartDeltaTime;
+  worldVel.y -= GPUPartGravity * GPUPartDeltaTime;
 
   // Wind
-  p.Velocity += GPUPartWindDirection * GPUPartWindStrength * GPUPartDeltaTime;
+  worldVel += GPUPartWindDirection * GPUPartWindStrength * GPUPartDeltaTime;
 
   // Drag
-  float speed = length(p.Velocity);
+  float speed = length(worldVel);
   if (speed > 0.001)
   {
     float dragForce = GPUPartDragCoefficient * speed * speed * GPUPartDeltaTime;
     float newSpeed = max(speed - dragForce, 0.0);
-    p.Velocity *= (newSpeed / speed);
+    worldVel *= (newSpeed / speed);
+  }
+
+  // Noise/Turbulence force
+  if (GPUPartNoiseStrength > 0.0)
+  {
+    float3 noisePos = worldPos * GPUPartNoiseFrequency + float3(0, 0, GPUPartTotalTime * GPUPartNoiseSpeed);
+    float3 curlForce = CurlNoise3D(noisePos);
+    worldVel += curlForce * GPUPartNoiseStrength * GPUPartDeltaTime;
   }
 
   // Integration
-  float3 prevPosition = p.Position;
-  p.Position += p.Velocity * GPUPartDeltaTime;
+  float3 prevWorldPos = worldPos;
+  worldPos += worldVel * GPUPartDeltaTime;
 
-  // Depth buffer collision
+  // For local-space: transform back to local space for storage
+  if (GPUPartSimulateInLocalSpace)
+  {
+    p.Position = mul(GPUPartWorldToObjectMatrix, float4(worldPos, 1.0)).xyz;
+    p.Velocity = mul((float3x3)GPUPartWorldToObjectMatrix, worldVel);
+  }
+  else
+  {
+    p.Position = worldPos;
+    p.Velocity = worldVel;
+  }
+
+  float3 prevPosition = p.Position; // local-space prev for collision restore
+  if (GPUPartSimulateInLocalSpace)
+  {
+    prevPosition = mul(GPUPartWorldToObjectMatrix, float4(prevWorldPos, 1.0)).xyz;
+  }
+
+  // Depth buffer collision (always in world space)
   if (GPUPartEnableDepthCollision)
   {
-    float4 clipPos = mul(GPUPartViewProjectionMatrix, float4(p.Position, 1.0));
+    float4 clipPos = mul(GPUPartViewProjectionMatrix, float4(worldPos, 1.0));
     float2 ndc = clipPos.xy / clipPos.w;
     float2 uv = ndc * float2(0.5, -0.5) + 0.5;
 
@@ -184,13 +249,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
     }
   }
 
-  // SDF collision
+  // SDF collision (always in world space)
   if (GPUPartEnableSDFCollision)
   {
-    float dist = SampleSDF(p.Position);
+    float dist = SampleSDF(worldPos);
     if (dist < 0.0)
     {
-      float3 sdfNormal = SDFGradient(p.Position);
+      float3 sdfNormal = SDFGradient(worldPos);
       HandleCollisionReaction(p, prevPosition, sdfNormal);
 
       if ((p.Flags & 1u) == 0)
@@ -206,21 +271,28 @@ void main(uint3 DTid : SV_DispatchThreadID)
       // Push out of surface
       if (GPUPartCollisionReaction != 1)
       {
-        p.Position += sdfNormal * (-dist + 0.01);
+        if (GPUPartSimulateInLocalSpace)
+        {
+          float3 correctedWorld = worldPos + sdfNormal * (-dist + 0.01);
+          p.Position = mul(GPUPartWorldToObjectMatrix, float4(correctedWorld, 1.0)).xyz;
+        }
+        else
+        {
+          p.Position += sdfNormal * (-dist + 0.01);
+        }
       }
     }
   }
 
-  // Color over life (modulate packed color)
-  // For simplicity, re-encode the color every frame from original + gradient
+  // Color over life
   float4 lifeColor = EvaluateColorOverLife(normalizedAge);
   uint rg = (f32tof16(lifeColor.r)) | (f32tof16(lifeColor.g) << 16);
   uint ba = (f32tof16(lifeColor.b)) | (f32tof16(lifeColor.a) << 16);
   p.Color0 = rg;
   p.Color1 = ba;
 
-  // Size over life (simple lerp for now: full size at start, shrinking to 0)
-  p.Size = p.InitialSize * p.Life;
+  // Size over life (8-keyframe evaluation)
+  p.Size = p.InitialSize * EvaluateSizeOverLife(normalizedAge);
 
   // Rotation
   p.RotationOffset += p.RotationSpeed * GPUPartDeltaTime;
@@ -228,9 +300,14 @@ void main(uint3 DTid : SV_DispatchThreadID)
 #if GPU_PARTICLE_TYPE == GPU_PARTICLE_TYPE_TRAIL
   // Write current position into trail ring buffer
   {
+    float3 trailWorldPos = p.Position;
+    if (GPUPartSimulateInLocalSpace)
+    {
+      trailWorldPos = mul(GPUPartObjectToWorldMatrix, float4(p.Position, 1.0)).xyz;
+    }
     uint trailBase = idx * GPUPartMaxTrailPoints;
     uint trailSlot = GPUPartTrailWriteIndex % GPUPartMaxTrailPoints;
-    gpuTrailPositions[trailBase + trailSlot] = float4(p.Position, p.Size);
+    gpuTrailPositions[trailBase + trailSlot] = float4(trailWorldPos, p.Size);
   }
 #endif
 

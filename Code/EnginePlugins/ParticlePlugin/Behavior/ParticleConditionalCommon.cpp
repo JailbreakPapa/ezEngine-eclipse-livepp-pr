@@ -16,15 +16,6 @@ EZ_BEGIN_STATIC_REFLECTED_ENUM(ezParticleAttribute, 1)
   EZ_ENUM_CONSTANT(ezParticleAttribute::ColorB),
   EZ_ENUM_CONSTANT(ezParticleAttribute::ColorA),
 EZ_END_STATIC_REFLECTED_ENUM;
-
-EZ_BEGIN_STATIC_REFLECTED_ENUM(ezParticleConditionOp, 1)
-  EZ_ENUM_CONSTANT(ezParticleConditionOp::Less),
-  EZ_ENUM_CONSTANT(ezParticleConditionOp::LessEqual),
-  EZ_ENUM_CONSTANT(ezParticleConditionOp::Greater),
-  EZ_ENUM_CONSTANT(ezParticleConditionOp::GreaterEqual),
-  EZ_ENUM_CONSTANT(ezParticleConditionOp::Equal),
-  EZ_ENUM_CONSTANT(ezParticleConditionOp::NotEqual),
-EZ_END_STATIC_REFLECTED_ENUM;
 // clang-format on
 
 float ezReadParticleAttribute(
@@ -164,21 +155,21 @@ void ezWriteParticleAttribute(
   }
 }
 
-bool ezEvaluateParticleCondition(ezParticleConditionOp::Enum op, float fValue, float fThreshold)
+bool ezEvaluateParticleCondition(ezComparisonOperator::Enum op, float fValue, float fThreshold)
 {
   switch (op)
   {
-    case ezParticleConditionOp::Less:
+    case ezComparisonOperator::Less:
       return fValue < fThreshold;
-    case ezParticleConditionOp::LessEqual:
+    case ezComparisonOperator::LessEqual:
       return fValue <= fThreshold;
-    case ezParticleConditionOp::Greater:
+    case ezComparisonOperator::Greater:
       return fValue > fThreshold;
-    case ezParticleConditionOp::GreaterEqual:
+    case ezComparisonOperator::GreaterEqual:
       return fValue >= fThreshold;
-    case ezParticleConditionOp::Equal:
+    case ezComparisonOperator::Equal:
       return ezMath::IsEqual(fValue, fThreshold, 0.001f);
-    case ezParticleConditionOp::NotEqual:
+    case ezComparisonOperator::NotEqual:
       return !ezMath::IsEqual(fValue, fThreshold, 0.001f);
     default:
       return false;

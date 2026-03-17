@@ -13,7 +13,7 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleBehaviorFactory_If, 1, ezRTTIDefaultAl
   EZ_BEGIN_PROPERTIES
   {
     EZ_ENUM_MEMBER_PROPERTY("ConditionInput", ezParticleAttribute, m_ConditionInput),
-    EZ_ENUM_MEMBER_PROPERTY("Comparison", ezParticleConditionOp, m_Comparison),
+    EZ_ENUM_MEMBER_PROPERTY("Comparison", ezComparisonOperator, m_Comparison),
     EZ_MEMBER_PROPERTY("Threshold", m_fThreshold),
     EZ_ENUM_MEMBER_PROPERTY("OutputAttribute", ezParticleAttribute, m_OutputAttribute),
     EZ_MEMBER_PROPERTY("TrueValue", m_fTrueValue)->AddAttributes(new ezDefaultValueAttribute(1.0f)),
@@ -56,7 +56,7 @@ void ezParticleBehaviorFactory_If::QueryFinalizerDependencies(ezSet<const ezRTTI
 
 void ezParticleBehaviorFactory_If::Save(ezStreamWriter& inout_stream) const
 {
-  const ezUInt8 uiVersion = 1;
+  const ezUInt8 uiVersion = 2;
   inout_stream << uiVersion;
 
   inout_stream << m_ConditionInput;
@@ -72,10 +72,33 @@ void ezParticleBehaviorFactory_If::Load(ezStreamReader& inout_stream)
   ezUInt8 uiVersion = 0;
   inout_stream >> uiVersion;
 
-  EZ_ASSERT_DEV(uiVersion <= 1, "Invalid version {0}", uiVersion);
+  EZ_ASSERT_DEV(uiVersion <= 2, "Invalid version {0}", uiVersion);
 
   inout_stream >> m_ConditionInput;
-  inout_stream >> m_Comparison;
+
+  if (uiVersion == 1)
+  {
+    // Old format used ezParticleConditionOp: Less=0 LessEqual=1 Greater=2 GreaterEqual=3 Equal=4 NotEqual=5
+    // New ezComparisonOperator: Equal=0 NotEqual=1 Less=2 LessEqual=3 Greater=4 GreaterEqual=5
+    ezUInt8 uiOldOp = 0;
+    inout_stream >> uiOldOp;
+
+    switch (uiOldOp)
+    {
+      case 0: m_Comparison = ezComparisonOperator::Less; break;
+      case 1: m_Comparison = ezComparisonOperator::LessEqual; break;
+      case 2: m_Comparison = ezComparisonOperator::Greater; break;
+      case 3: m_Comparison = ezComparisonOperator::GreaterEqual; break;
+      case 4: m_Comparison = ezComparisonOperator::Equal; break;
+      case 5: m_Comparison = ezComparisonOperator::NotEqual; break;
+      default: m_Comparison = ezComparisonOperator::Less; break;
+    }
+  }
+  else
+  {
+    inout_stream >> m_Comparison;
+  }
+
   inout_stream >> m_fThreshold;
   inout_stream >> m_OutputAttribute;
   inout_stream >> m_fTrueValue;

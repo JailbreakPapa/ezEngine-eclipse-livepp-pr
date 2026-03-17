@@ -5,6 +5,7 @@
 	<file>Icons/Speed.svg</file>
 	<file>Icons/Pause.svg</file>
 	<file>Icons/Play.svg</file>
+	<file>Icons/Convert.svg</file>
   </qresource>
   <qresource prefix="AssetIcons">
     <file>Particle_Effect.svg</file>

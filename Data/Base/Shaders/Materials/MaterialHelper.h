@@ -238,7 +238,28 @@ ezMaterialData FillMaterialData()
   matData.subsurfaceShadowFalloff = 0.0;
 #endif
 
-  matData.subsurfaceProfileIndex = 0; // Default: skin profile
+  // Set profile index from SSS_PROFILE permutation
+#if defined(USE_MATERIAL_SUBSURFACE_COLOR)
+  #if defined(SSS_PROFILE)
+    #if SSS_PROFILE == SSS_PROFILE_SKIN
+      matData.subsurfaceProfileIndex = 0;
+    #elif SSS_PROFILE == SSS_PROFILE_WAX
+      matData.subsurfaceProfileIndex = 1;
+    #elif SSS_PROFILE == SSS_PROFILE_JADE
+      matData.subsurfaceProfileIndex = 2;
+    #elif SSS_PROFILE == SSS_PROFILE_MILK
+      matData.subsurfaceProfileIndex = 3;
+    #elif SSS_PROFILE == SSS_PROFILE_FOLIAGE
+      matData.subsurfaceProfileIndex = 4;
+    #else
+      matData.subsurfaceProfileIndex = 0;
+    #endif
+  #else
+    matData.subsurfaceProfileIndex = 0;
+  #endif
+#else
+  matData.subsurfaceProfileIndex = 0;
+#endif
 
   matData.tangentDirection = float3(0, 0, 1);
 

@@ -19,7 +19,9 @@
 #include <EditorPluginScene/Scene/SceneDocumentWindow.moc.h>
 #include <EditorPluginScene/Visualizers/BoxReflectionProbeVisualizerAdapter.h>
 #include <EditorPluginScene/Visualizers/PointLightVisualizerAdapter.h>
+#include <EditorPluginScene/Visualizers/RectLightVisualizerAdapter.h>
 #include <EditorPluginScene/Visualizers/SpotLightVisualizerAdapter.h>
+#include <EditorPluginScene/Visualizers/TubeLightVisualizerAdapter.h>
 #include <GameEngine/Configuration/RendererProfileConfigs.h>
 #include <GameEngine/Gameplay/GreyBoxComponent.h>
 #include <GameEngine/Physics/ImpulseType.h>
@@ -34,7 +36,9 @@
 #include <RendererCore/Components/SplineComponent.h>
 #include <RendererCore/Lights/BoxReflectionProbeComponent.h>
 #include <RendererCore/Lights/PointLightComponent.h>
+#include <RendererCore/Lights/RectLightComponent.h>
 #include <RendererCore/Lights/SpotLightComponent.h>
+#include <RendererCore/Lights/TubeLightComponent.h>
 #include <RendererCore/Utils/CoreRenderProfile.h>
 #include <ToolsFoundation/Project/ToolsProject.h>
 #include <ToolsFoundation/Settings/ToolsTagRegistry.h>
@@ -213,6 +217,10 @@ void OnLoadPlugin()
     { return EZ_DEFAULT_NEW(ezPointLightVisualizerAdapter); });
   ezVisualizerAdapterRegistry::GetSingleton()->m_Factory.RegisterCreator(ezGetStaticRTTI<ezSpotLightVisualizerAttribute>(), [](const ezRTTI* pRtti) -> ezVisualizerAdapter*
     { return EZ_DEFAULT_NEW(ezSpotLightVisualizerAdapter); });
+  ezVisualizerAdapterRegistry::GetSingleton()->m_Factory.RegisterCreator(ezGetStaticRTTI<ezRectLightVisualizerAttribute>(), [](const ezRTTI* pRtti) -> ezVisualizerAdapter*
+    { return EZ_DEFAULT_NEW(ezRectLightVisualizerAdapter); });
+  ezVisualizerAdapterRegistry::GetSingleton()->m_Factory.RegisterCreator(ezGetStaticRTTI<ezTubeLightVisualizerAttribute>(), [](const ezRTTI* pRtti) -> ezVisualizerAdapter*
+    { return EZ_DEFAULT_NEW(ezTubeLightVisualizerAdapter); });
   ezVisualizerAdapterRegistry::GetSingleton()->m_Factory.RegisterCreator(ezGetStaticRTTI<ezBoxReflectionProbeVisualizerAttribute>(), [](const ezRTTI* pRtti) -> ezVisualizerAdapter*
     { return EZ_DEFAULT_NEW(ezBoxReflectionProbeVisualizerAdapter); });
 

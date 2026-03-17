@@ -78,12 +78,21 @@ void ezVolumetricFogPass::Execute(const ezRenderViewContext& renderViewContext, 
   if (m_bFroxelTexturesDirty)
   {
     EnsureFroxelTextures();
+    m_bFirstFrame = true;
   }
 
   ezGALDevice* pDevice = ezGALDevice::GetDefaultDevice();
 
   // Get clustered data for light information
   auto pClusteredData = GetPipeline()->GetFrameDataProvider<ezClusteredDataProvider>()->GetData(renderViewContext);
+
+  // Early out: no fog volumes in the scene
+  if (pClusteredData->m_uiNumFogVolumes == 0)
+  {
+    m_PrevViewProjectionMatrix = renderViewContext.m_pViewData->m_ViewProjectionMatrix[0];
+    m_bFirstFrame = true;
+    return;
+  }
 
   // Determine current / history froxel grids
   ezGALTextureHandle hCurrentGrid = m_bUseGridA ? m_hFroxelGridA : m_hFroxelGridB;
@@ -98,12 +107,15 @@ void ezVolumetricFogPass::Execute(const ezRenderViewContext& renderViewContext, 
 
     cb->FroxelNearPlane = pClusteredData->m_fFogNearPlane;
     cb->FroxelFarPlane = pClusteredData->m_fFogFarPlane;
-    cb->FroxelDepthSliceScale = 0.0f; // Computed in shader
+    cb->FroxelDepthSliceScale = 0.0f;
     cb->FroxelDepthSliceBias = 0.0f;
-    cb->FogDensityScale = 0.0f; // No longer used, density comes from per-volume data
+    cb->FogDensityScale = 0.0f;
     cb->FogAlbedo = ezVec3(1.0f);
     cb->FogAnisotropy = 0.0f;
-    cb->TemporalBlendWeight = pClusteredData->m_fFogTemporalBlendWeight;
+
+    // On first frame, use full weight to avoid blending with uninitialized history
+    cb->TemporalBlendWeight = m_bFirstFrame ? 1.0f : pClusteredData->m_fFogTemporalBlendWeight;
+
     cb->FogHeightDensityFalloff = 0.0f;
     cb->FogBaseHeight = 0.0f;
     cb->VFogStartDistance = 0.0f;
@@ -201,6 +213,7 @@ void ezVolumetricFogPass::Execute(const ezRenderViewContext& renderViewContext, 
 
   // Swap ping-pong
   m_bUseGridA = !m_bUseGridA;
+  m_bFirstFrame = false;
 }
 
 void ezVolumetricFogPass::ExecuteInactive(const ezRenderViewContext& renderViewContext, const ezArrayPtr<ezRenderPipelinePassConnection* const> inputs, const ezArrayPtr<ezRenderPipelinePassConnection* const> outputs)

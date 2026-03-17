@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Foundation/Math/Declarations.h>
 #include <Foundation/Math/Float16.h>
 #include <Foundation/Reflection/Reflection.h>
 #include <Foundation/SimdMath/SimdVec4f.h>
@@ -9,7 +10,7 @@ class ezProcessingStream;
 
 /// Particle attribute that can be read or written by conditional behaviors.
 ///
-/// Used by IF, Switch, Remap, and other logic nodes to select which
+/// Used by IF, Switch, Remap, ConditionalKill, and other logic nodes to select which
 /// particle property to evaluate or modify.
 struct EZ_PARTICLEPLUGIN_DLL ezParticleAttribute
 {
@@ -34,26 +35,6 @@ struct EZ_PARTICLEPLUGIN_DLL ezParticleAttribute
 
 EZ_DECLARE_REFLECTABLE_TYPE(EZ_PARTICLEPLUGIN_DLL, ezParticleAttribute);
 
-/// Comparison operator for conditional behaviors.
-struct EZ_PARTICLEPLUGIN_DLL ezParticleConditionOp
-{
-  using StorageType = ezUInt8;
-
-  enum Enum
-  {
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-    Equal,    ///< Within epsilon (0.001)
-    NotEqual, ///< Outside epsilon (0.001)
-
-    Default = Less
-  };
-};
-
-EZ_DECLARE_REFLECTABLE_TYPE(EZ_PARTICLEPLUGIN_DLL, ezParticleConditionOp);
-
 /// Reads a particle attribute value at the given index.
 /// Returns 0 if the required stream is null.
 EZ_PARTICLEPLUGIN_DLL float ezReadParticleAttribute(
@@ -72,6 +53,7 @@ EZ_PARTICLEPLUGIN_DLL void ezWriteParticleAttribute(
   ezProcessingStream* pSize,
   ezProcessingStream* pColor);
 
-/// Evaluates a comparison between fValue and fThreshold.
+/// Evaluates a comparison between fValue and fThreshold using the standard ezComparisonOperator.
+/// Equal and NotEqual use an epsilon of 0.001 for float comparison.
 EZ_PARTICLEPLUGIN_DLL bool ezEvaluateParticleCondition(
-  ezParticleConditionOp::Enum op, float fValue, float fThreshold);
+  ezComparisonOperator::Enum op, float fValue, float fThreshold);

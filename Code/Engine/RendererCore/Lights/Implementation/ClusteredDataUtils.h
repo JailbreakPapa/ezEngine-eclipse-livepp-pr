@@ -5,7 +5,9 @@
 #include <RendererCore/Lights/FillLightComponent.h>
 #include <RendererCore/Lights/Implementation/ReflectionProbeData.h>
 #include <RendererCore/Lights/PointLightComponent.h>
+#include <RendererCore/Lights/RectLightComponent.h>
 #include <RendererCore/Lights/SpotLightComponent.h>
+#include <RendererCore/Lights/TubeLightComponent.h>
 #include <RendererFoundation/Shader/ShaderUtils.h>
 
 #include <RendererCore/../../../Data/Base/Shaders/Common/LightData.h>
@@ -242,6 +244,48 @@ namespace
 
     const float fFalloffExponent = ezMath::Max(pFillLightRenderData->m_fFalloffExponent, 0.001f);
     out_perLightData.spotOrFillParams = ezShaderUtils::Float2ToRG16F(ezVec2(fFalloffExponent, pFillLightRenderData->m_fDirectionality));
+  }
+
+  void FillRectLightData(ezPerLightData& out_perLightData, const ezRectLightRenderData* pRectLightRenderData)
+  {
+    FillLightData(out_perLightData, pRectLightRenderData, LIGHT_TYPE_RECT);
+
+    // Forward direction: light normal (-X axis of rotation, light emits from front face)
+    const ezVec3 forwardDir = pRectLightRenderData->m_qGlobalRotation * ezVec3(-1.0f, 0.0f, 0.0f);
+    out_perLightData.direction = ezShaderUtils::Float3ToRGB10(forwardDir);
+
+    out_perLightData.position = pRectLightRenderData->m_vGlobalPosition;
+    out_perLightData.invSqrAttRadius = 1.0f / (pRectLightRenderData->m_fRange * pRectLightRenderData->m_fRange);
+
+    // Pack width and height as fp16
+    out_perLightData.spotOrFillParams = ezShaderUtils::Float2ToRG16F(
+      ezVec2(pRectLightRenderData->m_fWidth, pRectLightRenderData->m_fHeight));
+
+    // Pack right direction (Y axis of rotation) into cookie params for area light orientation
+    const ezVec3 rightDir = pRectLightRenderData->m_qGlobalRotation * ezVec3(0.0f, 1.0f, 0.0f);
+    out_perLightData.cookieParams0 = ezFloat16(rightDir.z).GetRawData() << 16;
+    out_perLightData.cookieParams1 = ezShaderUtils::Float2ToRG16F(rightDir.GetAsVec2());
+  }
+
+  void FillTubeLightData(ezPerLightData& out_perLightData, const ezTubeLightRenderData* pTubeLightRenderData)
+  {
+    FillLightData(out_perLightData, pTubeLightRenderData, LIGHT_TYPE_TUBE);
+
+    // Tube axis direction (Y axis of rotation)
+    const ezVec3 axisDir = pTubeLightRenderData->m_qGlobalRotation * ezVec3(0.0f, 1.0f, 0.0f);
+    out_perLightData.direction = ezShaderUtils::Float3ToRGB10(axisDir);
+
+    out_perLightData.position = pTubeLightRenderData->m_vGlobalPosition;
+    out_perLightData.invSqrAttRadius = 1.0f / (pTubeLightRenderData->m_fRange * pTubeLightRenderData->m_fRange);
+
+    // Pack length and radius as fp16
+    out_perLightData.spotOrFillParams = ezShaderUtils::Float2ToRG16F(
+      ezVec2(pTubeLightRenderData->m_fLength, pTubeLightRenderData->m_fRadius));
+
+    // Pack a perpendicular direction (X axis) for orientation recovery on GPU
+    const ezVec3 rightDir = pTubeLightRenderData->m_qGlobalRotation * ezVec3(1.0f, 0.0f, 0.0f);
+    out_perLightData.cookieParams0 = ezFloat16(rightDir.z).GetRawData() << 16;
+    out_perLightData.cookieParams1 = ezShaderUtils::Float2ToRG16F(rightDir.GetAsVec2());
   }
 
   void FillDecalData(ezPerDecalData& out_perDecalData, const ezDecalRenderData* pDecalRenderData)

@@ -3,15 +3,14 @@
 #include <ParticlePlugin/Behavior/ParticleBehavior.h>
 #include <ParticlePlugin/Behavior/ParticleConditionalCommon.h>
 
-/// Per-particle Switch: divides an input attribute's range into up to 4 buckets
-/// and writes a different value to the output for each bucket.
+/// Per-particle Switch: divides an input attribute's range into N+1 buckets
+/// using N thresholds and writes a different value to the output for each bucket.
 ///
-/// Example: Based on LifeFraction, set Size to different values at different
-/// stages of the particle's life:
-///   [0.0 - 0.25] -> 0.5 (small at birth)
-///   [0.25 - 0.5] -> 2.0 (grows)
-///   [0.5 - 0.75] -> 2.0 (stays large)
-///   [0.75 - 1.0] -> 0.1 (shrinks before death)
+/// The number of cases is dynamic (2 to 8). N thresholds define N+1 buckets:
+///   input < Threshold[0] -> Values[0]
+///   Threshold[0] <= input < Threshold[1] -> Values[1]
+///   ...
+///   input >= Threshold[N-1] -> Values[N]
 class EZ_PARTICLEPLUGIN_DLL ezParticleBehaviorFactory_Switch final : public ezParticleBehaviorFactory
 {
   EZ_ADD_DYNAMIC_REFLECTION(ezParticleBehaviorFactory_Switch, ezParticleBehaviorFactory);
@@ -29,19 +28,8 @@ public:
   ezEnum<ezParticleAttribute> m_InputAttribute;
   ezEnum<ezParticleAttribute> m_OutputAttribute;
 
-  /// Thresholds dividing the input range into buckets.
-  /// Bucket 0: input < Threshold1
-  /// Bucket 1: Threshold1 <= input < Threshold2
-  /// Bucket 2: Threshold2 <= input < Threshold3
-  /// Bucket 3: input >= Threshold3
-  float m_fThreshold1 = 0.25f;
-  float m_fThreshold2 = 0.5f;
-  float m_fThreshold3 = 0.75f;
-
-  float m_fValue0 = 0.0f;
-  float m_fValue1 = 1.0f;
-  float m_fValue2 = 2.0f;
-  float m_fValue3 = 3.0f;
+  ezHybridArray<float, 4> m_Thresholds;
+  ezHybridArray<float, 4> m_Values;
 };
 
 class EZ_PARTICLEPLUGIN_DLL ezParticleBehavior_Switch final : public ezParticleBehavior
@@ -51,13 +39,8 @@ class EZ_PARTICLEPLUGIN_DLL ezParticleBehavior_Switch final : public ezParticleB
 public:
   ezEnum<ezParticleAttribute> m_InputAttribute;
   ezEnum<ezParticleAttribute> m_OutputAttribute;
-  float m_fThreshold1 = 0.25f;
-  float m_fThreshold2 = 0.5f;
-  float m_fThreshold3 = 0.75f;
-  float m_fValue0 = 0.0f;
-  float m_fValue1 = 1.0f;
-  float m_fValue2 = 2.0f;
-  float m_fValue3 = 3.0f;
+  ezHybridArray<float, 4> m_Thresholds;
+  ezHybridArray<float, 4> m_Values;
 
 protected:
   virtual void CreateRequiredStreams() override;

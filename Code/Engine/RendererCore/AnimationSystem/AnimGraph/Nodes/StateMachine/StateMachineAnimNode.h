@@ -134,6 +134,15 @@ public:
 
   ezDynamicArray<ezAnimGraphStateTransition> m_Transitions;
 
+  /// Returns the current state index for debug visualization. Requires a valid graph instance.
+  ezUInt32 GetCurrentStateIndex(const ezAnimGraphInstance& inst) const;
+
+  /// Returns the name of the current state, or empty if invalid.
+  ezStringView GetCurrentStateName(const ezAnimGraphInstance& inst) const;
+
+  /// Returns the time spent in the current state.
+  ezTime GetTimeInCurrentState(const ezAnimGraphInstance& inst) const;
+
 private:
   ezAnimGraphLocalPoseOutputPin m_OutPose; // [ property ]
 

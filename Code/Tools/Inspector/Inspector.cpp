@@ -12,7 +12,9 @@
 #include <Inspector/MainWindow.moc.h>
 #include <Inspector/MemoryWidget.moc.h>
 #include <Inspector/PluginsWidget.moc.h>
+#include <Inspector/ProfilingWidget.moc.h>
 #include <Inspector/ReflectionWidget.moc.h>
+#include <Inspector/RendererWidget.moc.h>
 #include <Inspector/ResourceWidget.moc.h>
 #include <Inspector/SubsystemsWidget.moc.h>
 #include <Inspector/TimeWidget.moc.h>
@@ -105,6 +107,8 @@ public:
     ezTelemetry::AcceptMessagesForSystem('RFLC', true, ezQtReflectionWidget::ProcessTelemetry, nullptr);
     ezTelemetry::AcceptMessagesForSystem('TRAN', true, ezQtDataWidget::ProcessTelemetry, nullptr);
     ezTelemetry::AcceptMessagesForSystem('RESM', true, ezQtResourceWidget::ProcessTelemetry, nullptr);
+    ezTelemetry::AcceptMessagesForSystem('PROF', true, ezQtProfilingWidget::ProcessTelemetry, nullptr);
+    ezTelemetry::AcceptMessagesForSystem('RNDR', true, ezQtRendererWidget::ProcessTelemetry, nullptr);
 
     QSettings Settings;
     const QString sServer = Settings.value("LastConnection", QLatin1String("localhost:1040")).toString();

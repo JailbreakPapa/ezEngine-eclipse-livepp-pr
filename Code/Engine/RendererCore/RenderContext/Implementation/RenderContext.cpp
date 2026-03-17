@@ -510,34 +510,6 @@ ezResult ezRenderContext::ApplyContextStates(bool bForce)
     m_StateFlags.Remove(ezRenderContextFlags::ShaderStateChanged);
   }
 
-  if (m_pActiveGALShader)
-  {
-    const bool bDirty = (bForce || m_StateFlags.IsAnySet(ezRenderContextFlags::BindGroupLayoutChanged | ezRenderContextFlags::BindGroupChanged));
-
-    ezLogBlock applyBindingsBlock("Applying Shader Bindings", m_sActiveShader);
-    UploadConstants();
-    if (bDirty)
-    {
-      const ezUInt32 uiBindGroups = m_pActiveGALShader->GetBindGroupCount();
-      for (ezUInt32 uiBindGroup = 0; uiBindGroup < uiBindGroups; uiBindGroup++)
-      {
-        const bool bForceBindGroupUpdate = bForce || m_bDirtyBindGroups[uiBindGroup];
-        const bool bHasMaterialBindGroupResource = uiBindGroup == EZ_GAL_BIND_GROUP_MATERIAL && m_hMaterial.IsValid();
-        const bool bBindGroupModified = m_BindGroupBuilders[uiBindGroup].IsModified() && !bHasMaterialBindGroupResource;
-        if (bBindGroupModified)
-          m_Statistics.m_uiModifiedBindGroup[uiBindGroup]++;
-
-        if (bForceBindGroupUpdate || bBindGroupModified)
-        {
-          EZ_SUCCEED_OR_RETURN(ApplyBindGroup(m_pActiveGALShader, uiBindGroup));
-        }
-        m_bDirtyBindGroups[uiBindGroup] = false;
-      }
-      m_StateFlags.Remove(ezRenderContextFlags::BindGroupLayoutChanged);
-      m_StateFlags.Remove(ezRenderContextFlags::BindGroupChanged);
-    }
-  }
-
   if ((bForce || bRebuildVertexDeclaration) && !m_bCompute)
   {
     if (m_hActiveGALShader.IsInvalidated())
@@ -595,17 +567,54 @@ ezResult ezRenderContext::ApplyContextStates(bool bForce)
     m_StateFlags.Remove(ezRenderContextFlags::NonPipelineStateChanged);
   }
 
+  // Pipeline must be set before bind groups, as DX12 requires the root signature to be bound first.
   if (bForce || m_StateFlags.IsSet(ezRenderContextFlags::PipelineChanged))
   {
     m_StateFlags.Remove(ezRenderContextFlags::PipelineChanged);
 
     if (m_bRendering)
     {
-      m_pGALCommandEncoder->SetGraphicsPipeline(ezGALPipelineCache::GetPipeline(m_GraphicsPipeline));
+      ezGALGraphicsPipelineHandle hPipeline = ezGALPipelineCache::GetPipeline(m_GraphicsPipeline);
+      if (hPipeline.IsInvalidated())
+        return EZ_FAILURE;
+
+      m_pGALCommandEncoder->SetGraphicsPipeline(hPipeline);
     }
     else if (m_bCompute)
     {
-      m_pGALCommandEncoder->SetComputePipeline(ezGALPipelineCache::GetPipeline(m_ComputePipeline));
+      ezGALComputePipelineHandle hPipeline = ezGALPipelineCache::GetPipeline(m_ComputePipeline);
+      if (hPipeline.IsInvalidated())
+        return EZ_FAILURE;
+
+      m_pGALCommandEncoder->SetComputePipeline(hPipeline);
+    }
+  }
+
+  if (m_pActiveGALShader)
+  {
+    const bool bDirty = (bForce || m_StateFlags.IsAnySet(ezRenderContextFlags::BindGroupLayoutChanged | ezRenderContextFlags::BindGroupChanged));
+
+    ezLogBlock applyBindingsBlock("Applying Shader Bindings", m_sActiveShader);
+    UploadConstants();
+    if (bDirty)
+    {
+      const ezUInt32 uiBindGroups = m_pActiveGALShader->GetBindGroupCount();
+      for (ezUInt32 uiBindGroup = 0; uiBindGroup < uiBindGroups; uiBindGroup++)
+      {
+        const bool bForceBindGroupUpdate = bForce || m_bDirtyBindGroups[uiBindGroup];
+        const bool bHasMaterialBindGroupResource = uiBindGroup == EZ_GAL_BIND_GROUP_MATERIAL && m_hMaterial.IsValid();
+        const bool bBindGroupModified = m_BindGroupBuilders[uiBindGroup].IsModified() && !bHasMaterialBindGroupResource;
+        if (bBindGroupModified)
+          m_Statistics.m_uiModifiedBindGroup[uiBindGroup]++;
+
+        if (bForceBindGroupUpdate || bBindGroupModified)
+        {
+          EZ_SUCCEED_OR_RETURN(ApplyBindGroup(m_pActiveGALShader, uiBindGroup));
+        }
+        m_bDirtyBindGroups[uiBindGroup] = false;
+      }
+      m_StateFlags.Remove(ezRenderContextFlags::BindGroupLayoutChanged);
+      m_StateFlags.Remove(ezRenderContextFlags::BindGroupChanged);
     }
   }
 

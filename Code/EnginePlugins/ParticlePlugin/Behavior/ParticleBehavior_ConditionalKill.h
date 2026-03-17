@@ -1,44 +1,7 @@
 #pragma once
 
 #include <ParticlePlugin/Behavior/ParticleBehavior.h>
-
-/// Which particle attribute to evaluate for the condition
-struct EZ_PARTICLEPLUGIN_DLL ezParticleKillAttribute
-{
-  using StorageType = ezUInt8;
-
-  enum Enum
-  {
-    PositionX,
-    PositionY,
-    PositionZ,
-    Speed,
-    Size,
-    ColorAlpha,
-
-    Default = PositionZ
-  };
-};
-
-EZ_DECLARE_REFLECTABLE_TYPE(EZ_PARTICLEPLUGIN_DLL, ezParticleKillAttribute);
-
-/// Comparison operator for the conditional kill
-struct EZ_PARTICLEPLUGIN_DLL ezParticleComparisonOp
-{
-  using StorageType = ezUInt8;
-
-  enum Enum
-  {
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-
-    Default = Less
-  };
-};
-
-EZ_DECLARE_REFLECTABLE_TYPE(EZ_PARTICLEPLUGIN_DLL, ezParticleComparisonOp);
+#include <ParticlePlugin/Behavior/ParticleConditionalCommon.h>
 
 /// Kills particles when a chosen attribute passes a threshold.
 ///
@@ -57,8 +20,8 @@ public:
   virtual void Save(ezStreamWriter& inout_stream) const override;
   virtual void Load(ezStreamReader& inout_stream) override;
 
-  ezEnum<ezParticleKillAttribute> m_Attribute;
-  ezEnum<ezParticleComparisonOp> m_Comparison;
+  ezEnum<ezParticleAttribute> m_Attribute;
+  ezEnum<ezComparisonOperator> m_Comparison;
   float m_fThreshold = 0.0f;
 };
 
@@ -67,8 +30,8 @@ class EZ_PARTICLEPLUGIN_DLL ezParticleBehavior_ConditionalKill final : public ez
   EZ_ADD_DYNAMIC_REFLECTION(ezParticleBehavior_ConditionalKill, ezParticleBehavior);
 
 public:
-  ezEnum<ezParticleKillAttribute> m_Attribute;
-  ezEnum<ezParticleComparisonOp> m_Comparison;
+  ezEnum<ezParticleAttribute> m_Attribute;
+  ezEnum<ezComparisonOperator> m_Comparison;
   float m_fThreshold = 0.0f;
 
 protected:
@@ -80,4 +43,5 @@ protected:
   ezProcessingStream* m_pStreamVelocity = nullptr;
   ezProcessingStream* m_pStreamSize = nullptr;
   ezProcessingStream* m_pStreamColor = nullptr;
+  ezProcessingStream* m_pStreamLifeTime = nullptr;
 };

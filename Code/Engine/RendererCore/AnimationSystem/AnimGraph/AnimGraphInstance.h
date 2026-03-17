@@ -45,6 +45,9 @@ public:
   /// Executes all nodes in the graph to generate animation output.
   void Update(ezAnimController& ref_controller, ezTime diff, ezGameObject* pTarget, const ezSkeletonResource* pSekeltonResource);
 
+  /// Per-node activity flags from the last Update(). Index corresponds to the graph's node array.
+  const ezDynamicArray<bool>& GetActiveNodes() const { return m_ActiveNodes; }
+
   /// Retrieves the instance data for a specific node.
   ///
   /// Nodes use this to access their per-instance state (playback time, blend weights, etc.).
@@ -60,6 +63,7 @@ private:
   const ezAnimGraph* m_pAnimGraph = nullptr;
 
   ezBlob m_InstanceData;
+  ezDynamicArray<bool> m_ActiveNodes;
 
   // EXTEND THIS if a new type is introduced
   ezInt8* m_pTriggerInputPinStates = nullptr;

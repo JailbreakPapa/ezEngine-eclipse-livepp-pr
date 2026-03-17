@@ -2,6 +2,8 @@
 
 #include <Foundation/Math/Color16f.h>
 #include <Foundation/Math/Float16.h>
+#include <Foundation/Tracks/ColorGradient.h>
+#include <Foundation/Tracks/Curve1D.h>
 #include <Core/Interfaces/WindWorldModule.h>
 #include <Core/World/World.h>
 #include <ParticlePlugin/Behavior/ParticleBehavior_Raycast.h>
@@ -38,6 +40,12 @@ EZ_BEGIN_DYNAMIC_REFLECTED_TYPE(ezParticleTypeGPUFactory, 1, ezRTTIDefaultAlloca
     EZ_MEMBER_PROPERTY("ColorEnd", m_ColorEnd)->AddAttributes(new ezDefaultValueAttribute(ezColor(1, 1, 1, 0))),
     EZ_MEMBER_PROPERTY("MaxTrailPoints", m_uiMaxTrailPoints)->AddAttributes(new ezDefaultValueAttribute(16), new ezClampValueAttribute(4, 64)),
     EZ_MEMBER_PROPERTY("VelocityStretch", m_fVelocityStretch)->AddAttributes(new ezDefaultValueAttribute(1.0f), new ezClampValueAttribute(0.0f, 20.0f)),
+    EZ_MEMBER_PROPERTY("SizeCurve", m_SizeCurve),
+    EZ_MEMBER_PROPERTY("ColorGradient", m_ColorGradient),
+    EZ_MEMBER_PROPERTY("NoiseStrength", m_fNoiseStrength)->AddAttributes(new ezDefaultValueAttribute(0.0f), new ezClampValueAttribute(0.0f, 100.0f)),
+    EZ_MEMBER_PROPERTY("NoiseFrequency", m_fNoiseFrequency)->AddAttributes(new ezDefaultValueAttribute(1.0f), new ezClampValueAttribute(0.01f, 50.0f)),
+    EZ_MEMBER_PROPERTY("NoiseSpeed", m_fNoiseSpeed)->AddAttributes(new ezDefaultValueAttribute(0.5f), new ezClampValueAttribute(0.0f, 10.0f)),
+    EZ_MEMBER_PROPERTY("SimulateInLocalSpace", m_bSimulateInLocalSpace),
   }
   EZ_END_PROPERTIES;
 }
@@ -73,12 +81,55 @@ void ezParticleTypeGPUFactory::CopyTypeProperties(ezParticleType* pObject, bool 
   pType->m_GPURenderType = m_GPURenderType;
   pType->m_uiMaxTrailPoints = m_uiMaxTrailPoints;
   pType->m_fVelocityStretch = m_fVelocityStretch;
+
+  // Feature 2: Sample size curve into 8 keyframes
+  if (!m_SizeCurve.m_ControlPoints.IsEmpty())
+  {
+    m_SizeCurve.ConvertToRuntimeData(m_RuntimeSizeCurve);
+    m_RuntimeSizeCurve.SortControlPoints();
+    m_RuntimeSizeCurve.CreateLinearApproximation();
+
+    double fMinX, fMaxX;
+    m_RuntimeSizeCurve.QueryExtents(fMinX, fMaxX);
+    fMinX = ezMath::Min(fMinX, 0.0);
+    fMaxX = ezMath::Max(fMaxX, 1.0);
+
+    float keyframes[8];
+    for (int i = 0; i < 8; ++i)
+    {
+      double t = i / 7.0;
+      double pos = ezMath::Lerp(fMinX, fMaxX, t);
+      keyframes[i] = (float)m_RuntimeSizeCurve.Evaluate(pos);
+    }
+
+    pType->m_vSizeKeyframes0.Set(keyframes[0], keyframes[1], keyframes[2], keyframes[3]);
+    pType->m_vSizeKeyframes1.Set(keyframes[4], keyframes[5], keyframes[6], keyframes[7]);
+  }
+  else
+  {
+    // Default: linear falloff from 1 to 0
+    pType->m_vSizeKeyframes0.Set(1.0f, 0.857f, 0.714f, 0.571f);
+    pType->m_vSizeKeyframes1.Set(0.429f, 0.286f, 0.143f, 0.0f);
+  }
+
+  // Feature 3: Color gradient
+  pType->m_ColorGradient = m_ColorGradient;
+  pType->m_bColorGradientDirty = true;
+
+  // Feature 4: Noise
+  pType->m_fNoiseStrength = m_fNoiseStrength;
+  pType->m_fNoiseFrequency = m_fNoiseFrequency;
+  pType->m_fNoiseSpeed = m_fNoiseSpeed;
+
+  // Feature 5: Local-space
+  pType->m_bSimulateInLocalSpace = m_bSimulateInLocalSpace;
 }
 
 enum class TypeGPUVersion
 {
   Version_1 = 1,
   Version_2_RenderType,
+  Version_3_ProductionFeatures,
 
   Version_Count,
   Version_Current = Version_Count - 1
@@ -108,6 +159,16 @@ void ezParticleTypeGPUFactory::Save(ezStreamWriter& inout_stream) const
   inout_stream << m_GPURenderType;
   inout_stream << m_uiMaxTrailPoints;
   inout_stream << m_fVelocityStretch;
+
+  // Version_3_ProductionFeatures
+  m_SizeCurve.ConvertToRuntimeData(m_RuntimeSizeCurve);
+  m_RuntimeSizeCurve.SortControlPoints();
+  m_RuntimeSizeCurve.Save(inout_stream);
+  m_ColorGradient.Save(inout_stream);
+  inout_stream << m_fNoiseStrength;
+  inout_stream << m_fNoiseFrequency;
+  inout_stream << m_fNoiseSpeed;
+  inout_stream << m_bSimulateInLocalSpace;
 }
 
 void ezParticleTypeGPUFactory::Load(ezStreamReader& inout_stream)
@@ -138,6 +199,18 @@ void ezParticleTypeGPUFactory::Load(ezStreamReader& inout_stream)
     inout_stream >> m_uiMaxTrailPoints;
     inout_stream >> m_fVelocityStretch;
   }
+
+  if (uiVersion >= (ezUInt8)TypeGPUVersion::Version_3_ProductionFeatures)
+  {
+    m_RuntimeSizeCurve.Load(inout_stream);
+    m_RuntimeSizeCurve.SortControlPoints();
+    m_RuntimeSizeCurve.CreateLinearApproximation();
+    m_ColorGradient.Load(inout_stream);
+    inout_stream >> m_fNoiseStrength;
+    inout_stream >> m_fNoiseFrequency;
+    inout_stream >> m_fNoiseSpeed;
+    inout_stream >> m_bSimulateInLocalSpace;
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -147,6 +220,12 @@ ezParticleTypeGPU::ezParticleTypeGPU() = default;
 ezParticleTypeGPU::~ezParticleTypeGPU()
 {
   DestroyGPUBuffers();
+
+  if (!m_hColorGradientTexture.IsInvalidated())
+  {
+    ezGALDevice::GetDefaultDevice()->DestroyTexture(m_hColorGradientTexture);
+    m_hColorGradientTexture.Invalidate();
+  }
 }
 
 void ezParticleTypeGPU::CreateRequiredStreams()
@@ -221,6 +300,70 @@ void ezParticleTypeGPU::DestroyGPUBuffers()
   m_hCounterBuffer.Invalidate();
   m_hTrailPositionBuffer.Invalidate();
   m_bGPUBuffersCreated = false;
+}
+
+void ezParticleTypeGPU::BakeColorGradientTexture() const
+{
+  if (!m_bColorGradientDirty)
+    return;
+
+  m_bColorGradientDirty = false;
+
+  // Check if gradient has any control points
+  bool bHasGradient = false;
+  {
+    ezUInt32 numColor = 0, numAlpha = 0, numIntensity = 0;
+    m_ColorGradient.GetNumControlPoints(numColor, numAlpha, numIntensity);
+    bHasGradient = (numColor > 0 || numAlpha > 0 || numIntensity > 0);
+  }
+
+  if (!bHasGradient)
+  {
+    if (!m_hColorGradientTexture.IsInvalidated())
+    {
+      ezGALDevice::GetDefaultDevice()->DestroyTexture(m_hColorGradientTexture);
+      m_hColorGradientTexture.Invalidate();
+    }
+    return;
+  }
+
+  // Bake 256 texels, RGBA8
+  ezUInt8 pixels[256 * 4];
+  for (ezUInt32 i = 0; i < 256; ++i)
+  {
+    double t = i / 255.0;
+    ezColorGammaUB rgba;
+    float intensity;
+    m_ColorGradient.Evaluate(t, rgba, intensity);
+
+    // Apply intensity as a multiplier on RGB (clamped to 0-255)
+    pixels[i * 4 + 0] = (ezUInt8)ezMath::Clamp((int)(rgba.r * intensity), 0, 255);
+    pixels[i * 4 + 1] = (ezUInt8)ezMath::Clamp((int)(rgba.g * intensity), 0, 255);
+    pixels[i * 4 + 2] = (ezUInt8)ezMath::Clamp((int)(rgba.b * intensity), 0, 255);
+    pixels[i * 4 + 3] = rgba.a;
+  }
+
+  ezGALDevice* pDevice = ezGALDevice::GetDefaultDevice();
+
+  if (!m_hColorGradientTexture.IsInvalidated())
+  {
+    pDevice->DestroyTexture(m_hColorGradientTexture);
+    m_hColorGradientTexture.Invalidate();
+  }
+
+  ezGALTextureCreationDescription desc;
+  desc.m_uiWidth = 256;
+  desc.m_uiHeight = 1;
+  desc.m_Format = ezGALResourceFormat::RGBAUByteNormalized;
+  desc.m_TextureFlags = ezGALTextureUsageFlags::ShaderResource;
+  desc.m_ResourceAccess.m_bImmutable = true;
+
+  ezGALSystemMemoryDescription memDesc;
+  memDesc.m_pData = ezMakeByteBlobPtr(pixels, sizeof(pixels));
+  memDesc.m_uiRowPitch = 256 * 4;
+  memDesc.m_uiSlicePitch = 256 * 4;
+
+  m_hColorGradientTexture = pDevice->CreateTexture(desc, ezMakeArrayPtr(&memDesc, 1));
 }
 
 void ezParticleTypeGPU::ExtractTypeRenderData(ezMsgExtractRenderData& ref_msg, const ezTransform& instanceTransform) const
@@ -344,6 +487,28 @@ void ezParticleTypeGPU::ExtractTypeRenderData(ezMsgExtractRenderData& ref_msg, c
     sysInfo.m_uiTrailWriteIndex = m_uiTrailWriteIndex;
     sysInfo.m_hTrailPositionBuffer = m_hTrailPositionBuffer;
     sysInfo.m_fVelocityStretch = m_fVelocityStretch;
+
+    // Feature 2: Size keyframes
+    sysInfo.m_vSizeKeyframes0 = m_vSizeKeyframes0;
+    sysInfo.m_vSizeKeyframes1 = m_vSizeKeyframes1;
+
+    // Feature 3: Color gradient texture
+    BakeColorGradientTexture();
+    sysInfo.m_hColorGradientTexture = m_hColorGradientTexture;
+    sysInfo.m_bHasColorGradient = !m_hColorGradientTexture.IsInvalidated();
+
+    // Feature 4: Noise
+    sysInfo.m_fNoiseStrength = m_fNoiseStrength;
+    sysInfo.m_fNoiseFrequency = m_fNoiseFrequency;
+    sysInfo.m_fNoiseSpeed = m_fNoiseSpeed;
+
+    // Feature 5: Local-space
+    sysInfo.m_bSimulateInLocalSpace = m_bSimulateInLocalSpace;
+    if (m_bSimulateInLocalSpace)
+    {
+      sysInfo.m_ObjectToWorldMatrix = instanceTransform.GetAsMat4();
+      sysInfo.m_WorldToObjectMatrix = instanceTransform.GetAsMat4().GetInverse();
+    }
 
     ezGPUParticleDataProvider::QueueSystem(sysInfo);
   }

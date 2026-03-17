@@ -7,13 +7,12 @@
 #include <RendererCore/Shader/ShaderResource.h>
 #include <RendererFoundation/RendererFoundationDLL.h>
 
-/// Screen-space contact shadows using Bend Studios' wavefront ray-marching technique.
+/// Screen-space contact shadows using per-pixel ray marching in view space.
 ///
-/// Traces rays along the depth buffer from the brightest directional light to add fine contact
-/// shadows that shadow maps cannot resolve. The result is published through
-/// ezScreenSpaceShadowDataProvider and combined with the shadow term during lighting.
-///
-/// Place after the depth/GBuffer pass and before DeferredLighting in the pipeline.
+/// Traces rays from each pixel toward the brightest directional light in view space,
+/// projecting each step to screen UV and sampling the depth buffer to detect occlusion.
+/// Based on the Spartan Engine approach. Designed to supplement shadow maps with fine
+/// contact detail. Requires TAA to resolve temporal noise from the dithered ray offset.
 class EZ_RENDERERCORE_DLL ezScreenSpaceShadowPass : public ezRenderPipelinePass
 {
   EZ_ADD_DYNAMIC_REFLECTION(ezScreenSpaceShadowPass, ezRenderPipelinePass);
@@ -29,7 +28,7 @@ public:
   virtual ezResult Deserialize(ezStreamReader& inout_stream) override;
 
 protected:
-  void EnsureResources(ezUInt32 uiWidth, ezUInt32 uiHeight);
+  void EnsureResources(ezUInt32 uiWidth, ezUInt32 uiHeight, ezUInt32 uiArraySize);
   void DestroyResources();
 
   ezRenderPipelineNodeInputPin m_PinDepthStencil;
@@ -38,13 +37,14 @@ protected:
   ezShaderResourceHandle m_hShader;
 
   ezGALTextureHandle m_hShadowTexture;
-  ezGALSamplerStateHandle m_hPointBorderSampler;
 
   ezUInt32 m_uiWidth = 0;
   ezUInt32 m_uiHeight = 0;
 
-  // Properties
-  float m_fSurfaceThickness = 0.005f;
-  float m_fBilinearThreshold = 0.02f;
-  float m_fShadowContrast = 4.0f;
+  float m_fMaxRayDistance = 0.05f;
+  ezUInt32 m_uiMaxSteps = 16;
+  float m_fSurfaceThickness = 0.02f;
+  float m_fShadowIntensity = 1.0f;
+
+  ezUInt32 m_uiFrameIndex = 0;
 };

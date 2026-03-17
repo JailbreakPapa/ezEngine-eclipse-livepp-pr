@@ -17,7 +17,7 @@ ezQtVisualGraphCommentNode::ezQtVisualGraphCommentNode()
 {
   m_CommentColor = QColor(70, 70, 70, 200);
 
-  setZValue(-100);
+  setZValue(-100); // render below all regular nodes
   setAcceptHoverEvents(true);
 }
 
@@ -26,6 +26,7 @@ void ezQtVisualGraphCommentNode::InitNode(const ezVisualGraphObjectManager* pMan
   m_pManager = pManager;
 
   m_pCommentLabel = new QGraphicsTextItem(this);
+  m_pCommentLabel->setAcceptHoverEvents(false); // let hover events fall through to the parent so resize cursor detection works correctly
 
   QFont font = QApplication::font();
   font.setPointSizeF(font.pointSizeF() * 1.1f);
@@ -103,8 +104,11 @@ void ezQtVisualGraphCommentNode::paint(QPainter* painter, const QStyleOptionGrap
   auto palette = QApplication::palette();
 
   // Background
+  QColor backgroundColor = m_CommentColor;
+  backgroundColor.setAlphaF(0.3f);
+
   painter->setPen(Qt::NoPen);
-  painter->setBrush(m_CommentColor);
+  painter->setBrush(backgroundColor);
   painter->drawPath(path());
 
   // Header bar
@@ -133,9 +137,17 @@ void ezQtVisualGraphCommentNode::paint(QPainter* painter, const QStyleOptionGrap
   painter->setBrush(Qt::NoBrush);
   painter->drawPath(path());
 
-  // Text color adapts to background brightness
-  const bool bBackgroundIsLight = m_CommentColor.lightnessF() > 0.5f;
-  QColor textColor = bBackgroundIsLight ? QColor(30, 30, 30) : QColor(220, 220, 220);
+  // Invert the theme text color when the comment background is light,
+  // so that the label stays readable on both dark and light comment colors.
+  QColor textColor = palette.buttonText().color();
+  const bool bBackgroundIsLight = m_CommentColor.lightnessF() > 0.6f;
+  if (bBackgroundIsLight)
+  {
+    textColor.setRed(255 - textColor.red());
+    textColor.setGreen(255 - textColor.green());
+    textColor.setBlue(255 - textColor.blue());
+  }
+
   m_pCommentLabel->setDefaultTextColor(textColor);
 }
 
@@ -204,14 +216,14 @@ void ezQtVisualGraphCommentNode::mousePressEvent(QGraphicsSceneMouseEvent* event
   m_ContainedNodes.Clear();
   m_vPrevPos = pos();
 
-  if (scene())
+  if (scene() && !(event->modifiers() & Qt::Modifier::SHIFT)) // holding SHIFT deactivates movement of contained nodes
   {
     QRectF sceneRect = mapToScene(path().boundingRect()).boundingRect();
     QList<QGraphicsItem*> items = scene()->items(sceneRect, Qt::IntersectsItemBoundingRect);
 
     for (QGraphicsItem* pItem : items)
     {
-      if (pItem == this || pItem->parentItem() != nullptr)
+      if (pItem == this || pItem->parentItem() != nullptr) // skip self and child items (e.g. pin graphics items)
         continue;
 
       // Only include top-level items that are our node type
@@ -219,8 +231,10 @@ void ezQtVisualGraphCommentNode::mousePressEvent(QGraphicsSceneMouseEvent* event
         continue;
 
       // Only if the node's center is inside the comment bounds
+      // Skip selected nodes: they are already moved by the scene's selection logic,
+      // so adding them here would apply the movement delta twice.
       QPointF nodeCenter = pItem->mapToScene(pItem->boundingRect().center());
-      if (sceneRect.contains(nodeCenter))
+      if (sceneRect.contains(nodeCenter) && !pItem->isSelected())
       {
         m_ContainedNodes.PushBack(pItem);
       }
@@ -270,7 +284,6 @@ void ezQtVisualGraphCommentNode::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
     setPath(p);
 
     float padding = 8.0f;
-    m_pCommentLabel->setPos(padding, s_fHeaderHeight + padding);
     m_pCommentLabel->setTextWidth(m_vCurrentSize.x - padding * 2);
 
     setPos(newPos);

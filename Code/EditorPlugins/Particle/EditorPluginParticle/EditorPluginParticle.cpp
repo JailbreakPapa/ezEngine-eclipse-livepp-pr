@@ -23,6 +23,7 @@ void OnLoadPlugin()
     // Menu Bar
     {
       ezActionMapManager::RegisterActionMap("ParticleEffectAssetMenuBar", "AssetMenuBar");
+      ezParticleActions::MapMenuBarActions("ParticleEffectAssetMenuBar");
     }
 
     // Tool Bar

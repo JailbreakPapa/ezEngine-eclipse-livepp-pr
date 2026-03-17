@@ -468,4 +468,29 @@ bool ezStateMachineAnimNode::GetInstanceDataDesc(ezInstanceDataDesc& out_desc) c
 }
 
 
+ezUInt32 ezStateMachineAnimNode::GetCurrentStateIndex(const ezAnimGraphInstance& inst) const
+{
+  const InstanceData* pInstance = const_cast<ezAnimGraphInstance&>(inst).GetAnimNodeInstanceData<InstanceData>(*this);
+  if (!pInstance || !pInstance->m_bInitialized)
+    return ezInvalidIndex;
+  return pInstance->m_uiCurrentStateIndex;
+}
+
+ezStringView ezStateMachineAnimNode::GetCurrentStateName(const ezAnimGraphInstance& inst) const
+{
+  const ezUInt32 uiIdx = GetCurrentStateIndex(inst);
+  if (uiIdx == ezInvalidIndex || uiIdx >= GetNumStates())
+    return {};
+  return GetState(uiIdx).m_sName.GetView();
+}
+
+ezTime ezStateMachineAnimNode::GetTimeInCurrentState(const ezAnimGraphInstance& inst) const
+{
+  const InstanceData* pInstance = const_cast<ezAnimGraphInstance&>(inst).GetAnimNodeInstanceData<InstanceData>(*this);
+  if (!pInstance || !pInstance->m_bInitialized)
+    return ezTime::MakeZero();
+  return pInstance->m_TimeInCurrentState;
+}
+
+
 EZ_STATICLINK_FILE(RendererCore, RendererCore_AnimationSystem_AnimGraph_Nodes_StateMachine_StateMachineAnimNode);

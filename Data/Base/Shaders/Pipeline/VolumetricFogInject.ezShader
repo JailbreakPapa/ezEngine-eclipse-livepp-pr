@@ -28,10 +28,11 @@ float EvaluateFogVolume(float3 worldPos, ezPerFogVolumeData vol)
   if (any(absLocal > 1.0))
     return 0.0;
 
-  // Smooth edge falloff: 1 at center, 0 at boundary
-  float3 edgeDist = saturate(1.0 - absLocal);
-  float falloff = edgeDist.x * edgeDist.y * edgeDist.z;
-  return pow(falloff, vol.FalloffExponent);
+  // Smooth edge falloff based on closest edge distance
+  // This gives a uniform volume with smooth edges rather than
+  // the aggressive multiplicative falloff per-axis.
+  float minEdgeDist = min(min(1.0 - absLocal.x, 1.0 - absLocal.y), 1.0 - absLocal.z);
+  return pow(saturate(minEdgeDist), vol.FalloffExponent);
 }
 
 [numthreads(VOLUMETRIC_FOG_THREAD_GROUP_X, VOLUMETRIC_FOG_THREAD_GROUP_Y, VOLUMETRIC_FOG_THREAD_GROUP_Z)]

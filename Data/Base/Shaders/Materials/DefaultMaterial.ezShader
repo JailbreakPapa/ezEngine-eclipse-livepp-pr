@@ -14,12 +14,22 @@ CAMERA_MODE
 SHADING_QUALITY
 SHADOW_QUALITY
 VERTEX_SKINNING
+SSS_PROFILE
 
 [MATERIALPARAMETER]
 
 Permutation BLEND_MODE;
 Permutation SHADING_MODE;
 Permutation TWO_SIDED;
+Permutation SSS_PROFILE;
+
+Color SubsurfaceColor @Default(Color(1.0, 0.2, 0.1));
+bool UseSubsurfaceTexture;
+Texture2D SubsurfaceTexture;
+float SubsurfaceScatterPower @Default(1.0) @Clamp(0.0, 5.0);
+float SubsurfaceThickness @Default(0.5) @Clamp(0.0, 1.0);
+bool UseThicknessTexture;
+Texture2D ThicknessTexture;
 
 Color BaseColor @Default(Color(1.0, 1.0, 1.0));
 bool UseBaseTexture;
@@ -79,6 +89,11 @@ BOOL1(UseOrmTexture);
 BOOL1(UseHeightTexture);
 FLOAT1(HeightScale);
 INT1(PomMaxSteps);
+COLOR4F(SubsurfaceColor);
+BOOL1(UseSubsurfaceTexture);
+FLOAT1(SubsurfaceScatterPower);
+FLOAT1(SubsurfaceThickness);
+BOOL1(UseThicknessTexture);
 
 [VERTEXSHADER]
 
@@ -115,6 +130,11 @@ VS_OUT main(VS_IN Input)
 #define USE_CUSTOM_DITHER_NOISE
 #define CUSTOM_GLOBALS float2 ParallaxTexCoord;
 
+#if SSS_PROFILE != SSS_PROFILE_NONE
+  #define USE_MATERIAL_SUBSURFACE_COLOR
+  #define USE_MATERIAL_SUBSURFACE_PARAMS
+#endif
+
 #if RENDER_PASS == RENDER_PASS_EDITOR
   #define USE_DEBUG_INTERPOLATOR
 #endif
@@ -146,6 +166,12 @@ Texture2D DitherNoiseTexture BIND_GROUP(BG_MATERIAL);
 
 Texture2D HeightTexture BIND_GROUP(BG_MATERIAL);
 SamplerState HeightTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D SubsurfaceTexture BIND_GROUP(BG_MATERIAL);
+SamplerState SubsurfaceTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D ThicknessTexture BIND_GROUP(BG_MATERIAL);
+SamplerState ThicknessTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
 
 #include <Shaders/Common/ParallaxMapping.h>
 
@@ -291,3 +317,31 @@ float4 GetDitherNoise(float2 pixelCoord)
 
   return DitherNoiseTexture.SampleLevel(PointSampler, pixelCoord / noiseTextureSize, 0);
 }
+
+#if SSS_PROFILE != SSS_PROFILE_NONE
+float3 GetSubsurfaceColor()
+{
+  float3 sssColor = GetMaterialData(SubsurfaceColor).rgb;
+
+  [branch]
+  if (GetMaterialData(UseSubsurfaceTexture))
+  {
+    sssColor *= SubsurfaceTexture.Sample(SubsurfaceTexture_AutoSampler, G.ParallaxTexCoord).rgb;
+  }
+
+  return sssColor;
+}
+
+void GetSubsurfaceParams(out float scatterPower, out float shadowFalloff)
+{
+  scatterPower = GetMaterialData(SubsurfaceScatterPower);
+
+  shadowFalloff = GetMaterialData(SubsurfaceThickness);
+
+  [branch]
+  if (GetMaterialData(UseThicknessTexture))
+  {
+    shadowFalloff *= ThicknessTexture.Sample(ThicknessTexture_AutoSampler, G.ParallaxTexCoord).r;
+  }
+}
+#endif

@@ -9,6 +9,8 @@
 #include <RendererCore/Lights/AmbientLightComponent.h>
 #include <RendererCore/Lights/ClusteredDataExtractor.h>
 #include <RendererCore/Lights/Implementation/ClusteredDataUtils.h>
+#include <RendererCore/Lights/RectLightComponent.h>
+#include <RendererCore/Lights/TubeLightComponent.h>
 #include <RendererCore/Lights/VolumetricFogComponent.h>
 #include <RendererCore/Lights/Implementation/VirtualShadowPool.h>
 #include <RendererCore/Pipeline/ExtractedRenderData.h>
@@ -354,6 +356,31 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
             RasterizeSphere(fillLightSphere, uiLightIndex, viewMatrixRight, projectionMatrixRight, m_TempLightsClusters.GetData(), m_ClusterBoundingSpheresRightEye.GetData());
           }
         }
+        else if (auto pRectLightRenderData = ezDynamicCast<const ezRectLightRenderData*>(it))
+        {
+          FillRectLightData(m_TempLightData.ExpandAndGetRef(), pRectLightRenderData);
+
+          ezSimdBSphere rectLightSphere = ezSimdBSphere(ezSimdConversion::ToVec3(pRectLightRenderData->m_vGlobalPosition), pRectLightRenderData->m_fRange);
+          RasterizeSphere(rectLightSphere, uiLightIndex, viewMatrix, projectionMatrix, m_TempLightsClusters.GetData(), m_ClusterBoundingSpheres.GetData());
+
+          if (bIsStereo)
+          {
+            RasterizeSphere(rectLightSphere, uiLightIndex, viewMatrixRight, projectionMatrixRight, m_TempLightsClusters.GetData(), m_ClusterBoundingSpheresRightEye.GetData());
+          }
+        }
+        else if (auto pTubeLightRenderData = ezDynamicCast<const ezTubeLightRenderData*>(it))
+        {
+          FillTubeLightData(m_TempLightData.ExpandAndGetRef(), pTubeLightRenderData);
+
+          const float fBoundingRadius = pTubeLightRenderData->m_fRange + pTubeLightRenderData->m_fLength * 0.5f;
+          ezSimdBSphere tubeLightSphere = ezSimdBSphere(ezSimdConversion::ToVec3(pTubeLightRenderData->m_vGlobalPosition), fBoundingRadius);
+          RasterizeSphere(tubeLightSphere, uiLightIndex, viewMatrix, projectionMatrix, m_TempLightsClusters.GetData(), m_ClusterBoundingSpheres.GetData());
+
+          if (bIsStereo)
+          {
+            RasterizeSphere(tubeLightSphere, uiLightIndex, viewMatrixRight, projectionMatrixRight, m_TempLightsClusters.GetData(), m_ClusterBoundingSpheresRightEye.GetData());
+          }
+        }
         else if (auto pFogRenderData = ezDynamicCast<const ezFogRenderData*>(it))
         {
           const float fogBaseHeight = pFogRenderData->m_fBaseHeight;
@@ -415,7 +442,7 @@ void ezClusteredDataExtractor::PostSortAndBatch(const ezView& view, const ezDyna
           fogData.Anisotropy = pVolFogRenderData->m_fAnisotropy;
           fogData.HeightFalloff = pVolFogRenderData->m_fHeightFalloff;
           fogData.BaseHeight = globalTransform.m_vPosition.z;
-          fogData.FalloffExponent = 2.0f; // default edge falloff
+          fogData.FalloffExponent = pVolFogRenderData->m_fFalloffExponent;
           fogData.Padding = 0.0f;
 
           ezClusteredDataCPU::FogVolumeParams& params = m_TempFogVolumeParams.ExpandAndGetRef();

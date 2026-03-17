@@ -22,6 +22,9 @@ public:
   static ezActionDescriptorHandle s_hSimulationSpeedMenu;
   static ezActionDescriptorHandle s_hSimulationSpeed[10];
   static ezActionDescriptorHandle s_hRenderVisualizers;
+  static ezActionDescriptorHandle s_hConvertToGPU;
+
+  static void MapMenuBarActions(ezStringView sMapping);
 };
 
 class ezParticleAction : public ezButtonAction
@@ -36,6 +39,7 @@ public:
     AutoRestart,
     SimulationSpeed,
     RenderVisualizers,
+    ConvertToGPU,
   };
 
   ezParticleAction(const ezActionContext& context, const char* szName, ActionType type, float fSimSpeed = 1.0f);
@@ -50,4 +54,14 @@ private:
   ezParticleEffectAssetDocument* m_pEffectDocument;
   ActionType m_Type;
   float m_fSimSpeed;
+};
+
+class ezParticleConvertToGPUAction : public ezButtonAction
+{
+  EZ_ADD_DYNAMIC_REFLECTION(ezParticleConvertToGPUAction, ezButtonAction);
+
+public:
+  ezParticleConvertToGPUAction(const ezActionContext& context, const char* szName);
+
+  virtual void Execute(const ezVariant& value) override;
 };

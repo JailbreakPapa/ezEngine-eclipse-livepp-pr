@@ -48,6 +48,12 @@ void RemoveFileSystemEventHandler();
 void AddResourceManagerEventHandler();
 void RemoveResourceManagerEventHandler();
 
+void AddProfilingEventHandler();
+void RemoveProfilingEventHandler();
+
+void AddRendererEventHandler();
+void RemoveRendererEventHandler();
+
 void SetAppStats();
 
 // clang-format off
@@ -74,12 +80,16 @@ EZ_BEGIN_SUBSYSTEM_DECLARATION(InspectorPlugin, InspectorPluginMain)
     AddTimeEventHandler();
     AddFileSystemEventHandler();
     AddResourceManagerEventHandler();
+    AddProfilingEventHandler();
+    AddRendererEventHandler();
 
     SetAppStats();
   }
 
   ON_CORESYSTEMS_SHUTDOWN
   {
+    RemoveRendererEventHandler();
+    RemoveProfilingEventHandler();
     RemoveResourceManagerEventHandler();
     RemoveFileSystemEventHandler();
     RemoveTimeEventHandler();

@@ -3,19 +3,19 @@
 #include "../Common/ConstantBufferMacros.h"
 #include "../Common/Platforms.h"
 
+#define SSS_THREAD_GROUP_SIZE 8
+
 CONSTANT_BUFFER(ezScreenSpaceShadowConstants, 4)
 {
-  FLOAT4(SSSLightCoordinate);
-  INT2(SSSWaveOffset);
+  FLOAT3(SSSLightDirectionWS);
+  FLOAT1(SSSMaxRayDistance);
+
+  UINT1(SSSMaxSteps);
   FLOAT1(SSSSurfaceThickness);
-  FLOAT1(SSSBilinearThreshold);
+  FLOAT1(SSSShadowIntensity);
+  UINT1(SSSFrameIndex);
 
-  FLOAT1(SSSShadowContrast);
-  FLOAT1(SSSFarDepthValue);
-  FLOAT1(SSSNearDepthValue);
+  FLOAT2(SSSTexelSize);
   UINT1(SSSResolutionX);
-
   UINT1(SSSResolutionY);
-  FLOAT2(SSSInvDepthTextureSize);
-  UINT1(SSSPadding0);
 };

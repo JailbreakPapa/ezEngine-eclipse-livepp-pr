@@ -40,6 +40,6 @@ private:
   ezResult CompileSPIRVShader(ezStringView sFile, ezStringView sSource, bool bDebug, ezStringView sProfile, ezStringView sEntryPoint, ezDynamicArray<ezUInt8>& out_ByteCode);
   ezStringView GetProfileName(ezStringView sPlatform, ezGALShaderStage::Enum Stage);
 
-private:
+protected:
   ezMap<const char*, ezGALVertexAttributeSemantic::Enum, CompareConstChar> m_VertexInputMapping;
 };

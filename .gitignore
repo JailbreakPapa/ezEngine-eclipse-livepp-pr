@@ -13,3 +13,6 @@ Code/Engine/ezBuildInfo.h
 *.asgen
 as.predefined
 
+/Data/Samples
+/Data/Samples
+/Data/Samples/Testing Chambers
