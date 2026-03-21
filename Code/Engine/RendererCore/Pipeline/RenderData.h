@@ -141,6 +141,7 @@ struct EZ_RENDERERCORE_DLL ezDefaultRenderDataCategories
   static ezRenderData::Category LitMaskedStatic;
   static ezRenderData::Category LitMaskedDynamic;
   static ezRenderData::Category LitTransparent;
+  static ezRenderData::Category LitHair;
   static ezRenderData::Category LitForeground;
   static ezRenderData::Category SimpleOpaque;
   static ezRenderData::Category SimpleTransparent;

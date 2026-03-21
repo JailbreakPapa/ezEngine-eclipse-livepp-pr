@@ -1,0 +1,134 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+CAMERA_MODE
+
+[COMPUTESHADER]
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/CameraConstantsAccess.h>
+#include <Shaders/Hair/HairStrandShaderData.h>
+
+RWStructuredBuffer<ezHairTessVertexData> hairTessVertices BIND_GROUP(BG_DRAW_CALL);
+
+[numthreads(64, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+  uint strandLocalIdx = DTid.x;
+  if (strandLocalIdx >= NumStrands)
+    return;
+
+  uint strandGlobalIdx = StrandOffset + strandLocalIdx;
+  ezHairStrandInfoData info = hairStrandInfos[strandGlobalIdx];
+
+  uint pointCount = info.PointCount;
+  if (pointCount < 2)
+    return;
+
+  uint outBase = TessVertexOffset + strandLocalIdx * (pointCount * 2);
+
+  float3 cameraPos = CameraPosition;
+  float4x4 objectToWorld = TransformToMatrix(ObjectToWorld);
+
+  // Read all points first, apply object-to-world transform
+  // We process up to 64 points per strand (sufficient for most grooms)
+  float3 worldPositions[64];
+  float widths[64];
+
+  for (uint i = 0; i < pointCount && i < 64; i++)
+  {
+    ezHairStrandPointData pt = hairStrandPoints[info.PointOffset + i];
+    float4 worldPos = mul(objectToWorld, float4(pt.Position, 1.0));
+    worldPositions[i] = worldPos.xyz;
+    widths[i] = pt.Width * WidthScale;
+
+    // Apply simple wind animation: tips move more than roots
+    float tipFactor = float(i) / float(pointCount - 1);
+    float stiffnessFactor = saturate(1.0 - Stiffness) * tipFactor;
+
+    if (WindStrength > 0.0)
+    {
+      float phase = Time * 2.0 + worldPos.x * 0.3 + worldPos.z * 0.5 + info.Random * 6.28;
+      float windDisp = sin(phase) * WindStrength * 0.05 * stiffnessFactor;
+      float windDisp2 = cos(phase * 0.7 + 1.0) * WindStrength * 0.03 * stiffnessFactor;
+      worldPositions[i].x += windDisp;
+      worldPositions[i].z += windDisp2;
+    }
+
+    // Apply gravity
+    if (GravityStrength > 0.0)
+    {
+      worldPositions[i].y -= GravityStrength * 0.01 * stiffnessFactor;
+    }
+  }
+
+  // Generate camera-facing strip vertices
+  for (uint i = 0; i < pointCount && i < 64; i++)
+  {
+    float3 pos = worldPositions[i];
+    float width = widths[i];
+    float param = float(i) / float(pointCount - 1); // 0=root, 1=tip
+
+    // Compute tangent along strand (central differences for interior, forward/backward for endpoints)
+    float3 tangent;
+    if (i == 0)
+      tangent = worldPositions[1] - worldPositions[0];
+    else if (i == pointCount - 1)
+      tangent = worldPositions[i] - worldPositions[i - 1];
+    else
+      tangent = worldPositions[i + 1] - worldPositions[i - 1];
+
+    tangent = normalize(tangent);
+
+    // Camera-facing bitangent
+    float3 toCamera = cameraPos - pos;
+    float distToCamera = length(toCamera);
+    toCamera /= max(distToCamera, 0.001);
+
+    float3 bitangent = cross(tangent, toCamera);
+    float bitangentLen = length(bitangent);
+    if (bitangentLen < 0.001)
+    {
+      // Degenerate case: strand points directly at camera
+      bitangent = cross(tangent, float3(0, 1, 0));
+      bitangentLen = length(bitangent);
+      if (bitangentLen < 0.001)
+        bitangent = cross(tangent, float3(1, 0, 0));
+      bitangent = normalize(bitangent);
+    }
+    else
+    {
+      bitangent /= bitangentLen;
+    }
+
+    float3 normal = normalize(cross(tangent, bitangent));
+
+    // Left vertex
+    ezHairTessVertexData vLeft;
+    vLeft.Position = pos - bitangent * width;
+    vLeft.StrandParam = param;
+    vLeft.Normal = normal;
+    vLeft.Pad0 = 0;
+    vLeft.Tangent = tangent;
+    vLeft.Pad1 = 0;
+    vLeft.TexCoord = float2(0.0, param);
+    vLeft.Pad2 = info.RootU;
+    vLeft.Pad3 = info.Random;
+    hairTessVertices[outBase + i * 2 + 0] = vLeft;
+
+    // Right vertex
+    ezHairTessVertexData vRight;
+    vRight.Position = pos + bitangent * width;
+    vRight.StrandParam = param;
+    vRight.Normal = normal;
+    vRight.Pad0 = 0;
+    vRight.Tangent = tangent;
+    vRight.Pad1 = 0;
+    vRight.TexCoord = float2(1.0, param);
+    vRight.Pad2 = info.RootU;
+    vRight.Pad3 = info.Random;
+    hairTessVertices[outBase + i * 2 + 1] = vRight;
+  }
+}

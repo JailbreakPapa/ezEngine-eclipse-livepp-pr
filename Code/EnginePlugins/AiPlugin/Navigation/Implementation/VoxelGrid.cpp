@@ -289,7 +289,8 @@ void ezVoxelGrid::DebugDraw(const ezDebugRendererContext& context, const ezColor
   if (m_Blocks.IsEmpty())
     return;
 
-  const float fHalf = m_fVoxelSize * 0.5f;
+  // Shrink boxes slightly so individual voxels are visually distinguishable
+  const float fHalf = m_fVoxelSize * 0.45f;
   const ezVec3 vHalfExtents(fHalf, fHalf, fHalf);
 
   for (ezUInt32 bz = 0; bz < m_uiBlocksZ; ++bz)
@@ -349,7 +350,7 @@ void ezVoxelGrid::DebugDraw(const ezDebugRendererContext& context, const ezColor
           {
             const ezVec3 vWorldPos = CoordToWorld(vGlobalCoord);
             const ezBoundingBox voxelBox = ezBoundingBox::MakeFromCenterAndHalfExtents(vWorldPos, vHalfExtents);
-            ezDebugRenderer::DrawSolidBox(context, voxelBox, color);
+            ezDebugRenderer::DrawLineBox(context, voxelBox, color);
           }
         }
       }

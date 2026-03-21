@@ -12,6 +12,7 @@ target_link_libraries(${PROJECT_NAME}
   EditorFramework
   SharedPluginAssets
   ModelImporter2
+  HairImporter
   GameEngine
 )
 

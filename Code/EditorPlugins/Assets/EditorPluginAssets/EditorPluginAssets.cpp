@@ -16,6 +16,7 @@
 #include <EditorPluginAssets/AnimationClipAsset/AnimationClipAsset.h>
 #include <EditorPluginAssets/AnimationGraphAsset/AnimGraphActions.h>
 #include <EditorPluginAssets/DecalAsset/DecalAsset.h>
+#include <EditorPluginAssets/HairStrandAsset/HairStrandAsset.h>
 #include <EditorPluginAssets/Dialogs/ShaderTemplateDlg.moc.h>
 #include <EditorPluginAssets/LUTAsset/LUTAssetObjects.h>
 #include <EditorPluginAssets/LUTAsset/LUTAssetWindow.moc.h>
@@ -419,6 +420,19 @@ static void ConfigureCustomDataAsset()
   }
 }
 
+static void ConfigureHairStrandAsset()
+{
+  // Menu Bar
+  {
+    ezActionMapManager::RegisterActionMap("HairStrandAssetMenuBar", "AssetMenuBar");
+  }
+
+  // Tool Bar
+  {
+    ezActionMapManager::RegisterActionMap("HairStrandAssetToolBar", "AssetToolbar");
+  }
+}
+
 ezVariant CustomAction_CreateShaderFromTemplate(const ezDocument* pDoc)
 {
   ezQtShaderTemplateDlg dlg(nullptr, pDoc);
@@ -462,6 +476,7 @@ void OnLoadPlugin()
   ConfigureStateMachineAsset();
   ConfigureBlackboardTemplateAsset();
   ConfigureCustomDataAsset();
+  ConfigureHairStrandAsset();
 
   ezDocumentManager::s_CustomActions["CustomAction_CreateShaderFromTemplate"] = CustomAction_CreateShaderFromTemplate;
 }

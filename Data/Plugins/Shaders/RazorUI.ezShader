@@ -1,0 +1,106 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+
+RAZOR_MODE
+
+[RENDERSTATE]
+
+BlendingEnabled0 = true
+DestBlend0 = Blend_InvSrcAlpha
+SourceBlend0 = Blend_SrcAlpha
+DestBlendAlpha0 = Blend_InvSrcAlpha
+SourceBlendAlpha0 = Blend_One
+DepthTest = false
+DepthWrite = false
+CullMode = CullMode_None
+
+[SHADER]
+
+struct PS_IN
+{
+  float4 Position : SV_Position;
+  float2 TexCoord0 : TEXCOORD0;
+  float4 Color : COLOR0;
+};
+
+[VERTEXSHADER]
+
+#include "RazorConstants.h"
+
+struct VS_IN
+{
+  float2 Position : POSITION;
+  float2 TexCoord0 : TEXCOORD0;
+  float4 Color : COLOR0;
+};
+
+typedef PS_IN VS_OUT;
+
+VS_OUT main(VS_IN Input)
+{
+  VS_OUT RetVal;
+
+  // Convert from pixel coordinates to NDC.
+  float2 ndc;
+  ndc.x = (Input.Position.x / RazorViewportSize.x) * 2.0 - 1.0;
+  ndc.y = 1.0 - (Input.Position.y / RazorViewportSize.y) * 2.0;
+
+  RetVal.Position = float4(ndc, 0, 1);
+  RetVal.TexCoord0 = Input.TexCoord0;
+  RetVal.Color = Input.Color;
+
+  return RetVal;
+}
+
+[PIXELSHADER]
+
+#include <Shaders/Common/Common.h>
+
+Texture2D BaseTexture;
+SamplerState BaseTexture_AutoSampler;
+
+#if RAZOR_MODE == RAZOR_MODE_SOLID
+
+float4 main(PS_IN Input) : SV_Target
+{
+  return Input.Color;
+}
+
+#elif RAZOR_MODE == RAZOR_MODE_TEXTURED
+
+float4 main(PS_IN Input) : SV_Target
+{
+  float4 color = BaseTexture.Sample(BaseTexture_AutoSampler, Input.TexCoord0.xy);
+  color *= Input.Color;
+  return color;
+}
+
+#elif RAZOR_MODE == RAZOR_MODE_SDF_TEXT
+
+float4 main(PS_IN Input) : SV_Target
+{
+  float dist = BaseTexture.Sample(BaseTexture_AutoSampler, Input.TexCoord0.xy).r;
+  float edge = 0.5;
+  float smoothing = fwidth(dist) * 0.7;
+  float alpha = smoothstep(edge - smoothing, edge + smoothing, dist);
+  return float4(Input.Color.rgb, Input.Color.a * alpha);
+}
+
+#elif RAZOR_MODE == RAZOR_MODE_ALPHA_TEXT
+
+float4 main(PS_IN Input) : SV_Target
+{
+  float alpha = BaseTexture.Sample(BaseTexture_AutoSampler, Input.TexCoord0.xy).r;
+  return float4(Input.Color.rgb, Input.Color.a * alpha);
+}
+
+#else
+
+float4 main(PS_IN Input) : SV_Target
+{
+  return Input.Color;
+}
+
+#endif

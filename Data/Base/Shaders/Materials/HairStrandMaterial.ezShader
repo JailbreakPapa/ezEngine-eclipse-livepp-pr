@@ -1,0 +1,279 @@
+[PLATFORMS]
+ALL
+
+[PERMUTATIONS]
+
+BLEND_MODE
+RENDER_PASS
+SHADING_MODE
+TWO_SIDED = TRUE
+FLIP_WINDING
+FORWARD_PASS_WRITE_DEPTH
+MSAA
+CAMERA_MODE
+SHADING_QUALITY
+SHADOW_QUALITY
+
+[MATERIALPARAMETER]
+
+Permutation BLEND_MODE;
+Permutation SHADING_MODE;
+
+float Melanin @Default(0.5) @Clamp(0.0, 1.0) @Group("Hair Color");
+float MelaninRedness @Default(0.0) @Clamp(0.0, 1.0) @Group("Hair Color");
+bool UseCustomColor @Group("Hair Color");
+Color CustomHairColor @Default(Color(0.3, 0.15, 0.05)) @Group("Hair Color");
+bool UseColorTexture @Group("Hair Color");
+Texture2D ColorTexture @Group("Hair Color");
+
+float PrimaryRoughness @Default(0.1) @Clamp(0.02, 1.0) @Group("Specular");
+float SecondaryRoughness @Default(0.3) @Clamp(0.02, 1.0) @Group("Specular");
+float PrimaryShift @Default(-0.1) @Clamp(-0.5, 0.5) @Group("Specular");
+float SecondaryShift @Default(0.1) @Clamp(-0.5, 0.5) @Group("Specular");
+
+float ScatterIntensity @Default(1.0) @Clamp(0.0, 5.0) @Group("Scattering");
+float MultipleScatterScale @Default(1.0) @Clamp(0.0, 2.0) @Group("Scattering");
+float TransmissionRoughness @Default(0.15) @Clamp(0.02, 1.0) @Group("Scattering");
+
+float RootDarkening @Default(0.3) @Clamp(0.0, 1.0) @Group("Root-to-Tip");
+float TipFade @Default(0.0) @Clamp(0.0, 1.0) @Group("Root-to-Tip");
+
+float MaskThreshold @Default(0.3) @Clamp(0.0, 1.0) @Group("Alpha");
+
+Texture2D DitherNoiseTexture @Default("{ ac614d7c-2b31-4a7b-aa0c-c5d8200b7b89 }") @Group("Textures");
+
+[MATERIALCONFIG]
+
+RenderDataCategory = LitHair
+
+[RENDERSTATE]
+
+#include <Shaders/Materials/MaterialState.h>
+
+[MATERIALCONSTANTS]
+
+FLOAT1(Melanin);
+FLOAT1(MelaninRedness);
+BOOL1(UseCustomColor);
+COLOR4F(CustomHairColor);
+BOOL1(UseColorTexture);
+FLOAT1(PrimaryRoughness);
+FLOAT1(SecondaryRoughness);
+FLOAT1(PrimaryShift);
+FLOAT1(SecondaryShift);
+FLOAT1(ScatterIntensity);
+FLOAT1(MultipleScatterScale);
+FLOAT1(TransmissionRoughness);
+FLOAT1(RootDarkening);
+FLOAT1(TipFade);
+FLOAT1(MaskThreshold);
+
+[VERTEXSHADER]
+
+#define USE_NORMAL
+#define USE_TANGENT
+#define USE_TEXCOORD0
+
+#if RENDER_PASS == RENDER_PASS_EDITOR
+  #define USE_DEBUG_INTERPOLATOR
+#endif
+
+#include <Shaders/Common/Common.h>
+#include <Shaders/Common/GlobalConstants.h>
+#include <Shaders/Common/CameraConstantsAccess.h>
+#include <Shaders/Materials/MaterialInterpolator.h>
+#include <Shaders/Hair/HairStrandShaderData.h>
+
+StructuredBuffer<ezHairTessVertexData> hairTessVerticesRead BIND_GROUP(BG_DRAW_CALL);
+
+VS_OUT main(uint VertexID : SV_VertexID)
+{
+  VS_OUT RetVal;
+
+  // Decompose VertexID into segment + sub-vertex
+  // Each segment has 2 triangles = 6 vertices
+  // indexOffset maps the 6 vertices to the 4 corners of the quad:
+  //   0--2,3    (top-left, top-right)
+  //   |  / |
+  //   1,4--5    (bottom-left, bottom-right)
+  int indexOffset[6] = {0, 2, 3, 0, 3, 1};
+
+  uint segmentIndex = VertexID / 6;
+  uint vertexSubIndex = VertexID % 6;
+
+  // Each segment spans 2 adjacent tess vertex pairs (left/right)
+  // Segment i uses tess vertices [i*2, i*2+1] (top) and [(i+1)*2, (i+1)*2+1] (bottom)
+  uint topVertBase = segmentIndex * 2;
+  uint bottomVertBase = topVertBase + 2;
+
+  uint tessIdx;
+  if (indexOffset[vertexSubIndex] == 0)
+    tessIdx = topVertBase;      // top-left
+  else if (indexOffset[vertexSubIndex] == 1)
+    tessIdx = topVertBase + 1;  // top-right
+  else if (indexOffset[vertexSubIndex] == 2)
+    tessIdx = bottomVertBase;   // bottom-left
+  else
+    tessIdx = bottomVertBase + 1; // bottom-right
+
+  ezHairTessVertexData v = hairTessVerticesRead[tessIdx];
+
+  float4 worldPos = float4(v.Position, 1.0);
+  float4 screenPos = mul(GetWorldToScreenMatrix(), worldPos);
+
+  RetVal.Position = screenPos;
+
+#if defined(USE_WORLD_POSITION)
+  RetVal.WorldPosition = worldPos.xyz;
+#endif
+
+  RetVal.Normal = v.Normal;
+  RetVal.Tangent = v.Tangent;
+  RetVal.BiTangent = cross(v.Normal, v.Tangent);
+  RetVal.TexCoord0 = float2(v.TexCoord.x, v.TexCoord.y);
+
+  return RetVal;
+}
+
+[PIXELSHADER]
+
+#define USE_NORMAL
+#define USE_TANGENT
+#define USE_TEXCOORD0
+#define USE_HAIR_SHADING
+#define USE_MATERIAL_OCCLUSION
+#define USE_TWO_SIDED_LIGHTING
+#define USE_FOG
+#define USE_DECALS
+#define USE_CUSTOM_DITHER_NOISE
+#define USE_FINALIZE_MATERIAL
+
+#if RENDER_PASS == RENDER_PASS_EDITOR
+  #define USE_DEBUG_INTERPOLATOR
+#endif
+
+#include <Shaders/Materials/MaterialPixelShader.h>
+
+Texture2D ColorTexture BIND_GROUP(BG_MATERIAL);
+SamplerState ColorTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
+Texture2D DitherNoiseTexture BIND_GROUP(BG_MATERIAL);
+
+float3 GetNormal()
+{
+  return G.Input.Normal;
+}
+
+float3 GetDiffuseColor()
+{
+  float3 hairColor;
+
+  [branch]
+  if (GetMaterialData(UseCustomColor))
+  {
+    hairColor = GetMaterialData(CustomHairColor).rgb;
+  }
+  else
+  {
+    // Derive color from melanin model — compute an approximate RGB from absorption
+    float melanin = GetMaterialData(Melanin);
+    float redness = GetMaterialData(MelaninRedness);
+
+    float3 eumelaninColor = float3(0.06, 0.03, 0.01);  // Very dark brown
+    float3 pheomelaninColor = float3(0.6, 0.2, 0.02);  // Auburn/red
+
+    float3 baseColor = lerp(float3(0.9, 0.85, 0.7), eumelaninColor, melanin);
+    hairColor = lerp(baseColor, pheomelaninColor, redness * melanin);
+  }
+
+  [branch]
+  if (GetMaterialData(UseColorTexture))
+  {
+    hairColor *= ColorTexture.Sample(ColorTexture_AutoSampler, G.Input.TexCoord0.xy).rgb;
+  }
+
+  return hairColor * GetInstanceData().Color.rgb;
+}
+
+float3 GetSpecularColor()
+{
+  // For strand-based rendering, specular tint comes from the absorption model.
+  // Pass a neutral white specular — the HairBRDF handles coloring via absorption.
+  return float3(1, 1, 1) * GetMaterialData(ScatterIntensity);
+}
+
+float GetRoughness()
+{
+  return GetMaterialData(PrimaryRoughness);
+}
+
+float GetOpacity()
+{
+  float opacity = GetInstanceData().Color.a;
+
+  // Apply tip fade: strands become more transparent at tips
+  float tipFade = GetMaterialData(TipFade);
+  if (tipFade > 0.0)
+  {
+    float strandParam = G.Input.TexCoord0.y; // 0=root, 1=tip
+    float tipAlpha = 1.0 - tipFade * strandParam * strandParam;
+    opacity *= saturate(tipAlpha);
+  }
+
+  return opacity - GetMaterialData(MaskThreshold);
+}
+
+float GetOcclusion()
+{
+  // Approximate self-occlusion from strand parameter (roots are more occluded)
+  float strandParam = G.Input.TexCoord0.y;
+  float rootOcclusion = lerp(0.6, 1.0, strandParam);
+  return rootOcclusion;
+}
+
+float4 GetDitherNoise(float2 pixelCoord)
+{
+  uint2 noiseTextureSize;
+  DitherNoiseTexture.GetDimensions(noiseTextureSize.x, noiseTextureSize.y);
+
+  return DitherNoiseTexture.SampleLevel(PointSampler, pixelCoord / noiseTextureSize, 0);
+}
+
+void FinalizeMaterial(inout ezMaterialData matData)
+{
+  // Strand tangent direction comes directly from the tessellation output
+  matData.tangentDirection = normalize(G.Input.Tangent);
+
+  // Per-lobe BRDF parameters
+  matData.hairPrimaryShift = GetMaterialData(PrimaryShift);
+  matData.hairSecondaryShift = GetMaterialData(SecondaryShift);
+  matData.hairPrimaryRoughness = GetMaterialData(PrimaryRoughness);
+  matData.hairSecondaryRoughness = GetMaterialData(SecondaryRoughness);
+  matData.hairTransmissionRoughness = GetMaterialData(TransmissionRoughness);
+  matData.hairSpecularIntensity = GetMaterialData(ScatterIntensity);
+
+  // Melanin absorption model
+  matData.hairMelanin = GetMaterialData(Melanin);
+  matData.hairMelaninRedness = GetMaterialData(MelaninRedness);
+  matData.hairUseMelanin = GetMaterialData(UseCustomColor) ? 0.0 : 1.0;
+  matData.hairDyeColor = GetMaterialData(CustomHairColor).rgb;
+  matData.hairMultipleScatterScale = GetMaterialData(MultipleScatterScale);
+  matData.hairScatterIntensity = GetMaterialData(ScatterIntensity);
+
+  // Root-to-tip darkening using the strand parameter from UV.y
+  float rootDarkeningAmount = GetMaterialData(RootDarkening);
+  if (rootDarkeningAmount > 0.0)
+  {
+    float rootFactor = 1.0 - G.Input.TexCoord0.y; // y=0 root, y=1 tip
+    matData.hairRootDarkening = rootDarkeningAmount * rootFactor;
+  }
+  else
+  {
+    matData.hairRootDarkening = 0.0;
+  }
+
+  // High roughness for indirect specular (same reasoning as HairMaterial.ezShader)
+  matData.roughness = 0.85;
+  matData.perceptualRoughness = 0.85;
+  matData.specularColor *= 0.15;
+}

@@ -25,6 +25,9 @@ public:
   ezVoxelGrid* GetVoxelGrid() { return &m_VoxelGrid; }
   const ezVoxelGrid* GetVoxelGrid() const { return &m_VoxelGrid; }
 
+  /// Returns true once the grid has been voxelized and is ready for pathfinding.
+  bool IsReady() const { return m_bIsReady; }
+
   /// Triggers voxelization of the world using physics overlap tests.
   ///
   /// This iterates every voxel cell and does a box overlap test to determine occupancy.
@@ -49,5 +52,6 @@ private:
 
   ezVoxelGrid m_VoxelGrid;
   bool m_bNeedsVoxelization = true;
+  bool m_bIsReady = false;
   ezUInt32 m_uiUpdateDelay = 10;
 };

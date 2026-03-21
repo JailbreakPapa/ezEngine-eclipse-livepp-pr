@@ -1,0 +1,20 @@
+<Root>
+  <Box id="main-container" class="container">
+    <Text id="title" class="heading">Razor UI Test</Text>
+    
+    <Box class="content-area">
+      <Text class="paragraph">
+        This is a basic test of the Razor UI framework.
+      </Text>
+      
+      <Box class="row">
+        <Box class="button primary">Click Me</Box>
+        <Box class="button secondary">Cancel</Box>
+      </Box>
+    </Box>
+    
+    <Box id="footer" class="footer">
+      <Text class="small">ezEngine 2026</Text>
+    </Box>
+  </Box>
+</Root>

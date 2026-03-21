@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Razor UI Layout Test - Tests flexbox and layout properties -->
+<Root>
+  <Box class="layout-container">
+    
+    <!-- Horizontal Row Test -->
+    <Box class="section">
+      <Text class="section-title">Horizontal Layout</Text>
+      <Box class="row">
+        <Box class="box-item red">1</Box>
+        <Box class="box-item green">2</Box>
+        <Box class="box-item blue">3</Box>
+      </Box>
+    </Box>
+    
+    <!-- Vertical Column Test -->
+    <Box class="section">
+      <Text class="section-title">Vertical Layout</Text>
+      <Box class="column">
+        <Box class="box-item red">A</Box>
+        <Box class="box-item green">B</Box>
+        <Box class="box-item blue">C</Box>
+      </Box>
+    </Box>
+    
+    <!-- Justify Content Test -->
+    <Box class="section">
+      <Text class="section-title">Justify Content</Text>
+      <Box class="row justify-between">
+        <Box class="box-small">Start</Box>
+        <Box class="box-small">Middle</Box>
+        <Box class="box-small">End</Box>
+      </Box>
+    </Box>
+    
+    <!-- Flex Grow Test -->
+    <Box class="section">
+      <Text class="section-title">Flex Grow</Text>
+      <Box class="row">
+        <Box class="box-item flex-1">Flex 1</Box>
+        <Box class="box-item flex-2">Flex 2</Box>
+        <Box class="box-item flex-1">Flex 1</Box>
+      </Box>
+    </Box>
+    
+    <!-- Nested Layout Test -->
+    <Box class="section">
+      <Text class="section-title">Nested Layout</Text>
+      <Box class="nested-outer">
+        <Box class="nested-inner">
+          <Text>Nested Content</Text>
+        </Box>
+        <Box class="nested-inner">
+          <Text>More Content</Text>
+        </Box>
+      </Box>
+    </Box>
+    
+  </Box>
+</Root>

@@ -263,6 +263,14 @@ ezMaterialData FillMaterialData()
 
   matData.tangentDirection = float3(0, 0, 1);
 
+  matData.hairPrimaryShift = -0.1;
+  matData.hairSecondaryShift = 0.1;
+  matData.hairPrimaryRoughness = 0.1;
+  matData.hairSecondaryRoughness = 0.3;
+  matData.hairTransmissionRoughness = 0.15;
+  matData.hairSpecularIntensity = 1.0;
+  matData.hairRootDarkening = 0.0;
+
   return matData;
 }
 

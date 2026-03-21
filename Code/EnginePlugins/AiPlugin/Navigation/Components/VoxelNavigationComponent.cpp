@@ -15,10 +15,11 @@ EZ_BEGIN_STATIC_REFLECTED_ENUM(ezAiVoxelNavigationComponentState, 1)
   EZ_ENUM_CONSTANTS(ezAiVoxelNavigationComponentState::Idle, ezAiVoxelNavigationComponentState::Moving, ezAiVoxelNavigationComponentState::Failed)
 EZ_END_STATIC_REFLECTED_ENUM;
 
-EZ_BEGIN_COMPONENT_TYPE(ezAiVoxelNavigationComponent, 1, ezComponentMode::Dynamic)
+EZ_BEGIN_COMPONENT_TYPE(ezAiVoxelNavigationComponent, 2, ezComponentMode::Dynamic)
 {
   EZ_BEGIN_PROPERTIES
   {
+    EZ_ACCESSOR_PROPERTY("NavigationTarget", DummyGetter, SetNavigationTargetReference)->AddAttributes(new ezGameObjectReferenceAttribute()),
     EZ_MEMBER_PROPERTY("Speed", m_fSpeed)->AddAttributes(new ezDefaultValueAttribute(5.0f)),
     EZ_MEMBER_PROPERTY("Acceleration", m_fAcceleration)->AddAttributes(new ezDefaultValueAttribute(3.0f)),
     EZ_MEMBER_PROPERTY("Deceleration", m_fDeceleration)->AddAttributes(new ezDefaultValueAttribute(8.0f)),
@@ -48,6 +49,21 @@ EZ_END_COMPONENT_TYPE
 ezAiVoxelNavigationComponent::ezAiVoxelNavigationComponent() = default;
 ezAiVoxelNavigationComponent::~ezAiVoxelNavigationComponent() = default;
 
+void ezAiVoxelNavigationComponent::SetNavigationTargetReference(const char* szReference)
+{
+  auto resolver = GetWorld()->GetGameObjectReferenceResolver();
+
+  if (!resolver.IsValid())
+    return;
+
+  SetNavigationTarget(resolver(szReference, GetHandle(), "NavigationTarget"));
+}
+
+void ezAiVoxelNavigationComponent::SetNavigationTarget(ezGameObjectHandle hObject)
+{
+  m_hNavigationTarget = hObject;
+}
+
 void ezAiVoxelNavigationComponent::OnSimulationStarted()
 {
   SUPER::OnSimulationStarted();
@@ -61,25 +77,43 @@ void ezAiVoxelNavigationComponent::OnSimulationStarted()
 void ezAiVoxelNavigationComponent::SetDestination(const ezVec3& vGlobalPos)
 {
   auto* pVoxelModule = GetWorld()->GetOrCreateModule<ezAiVoxelWorldModule>();
-  if (pVoxelModule == nullptr)
+  if (pVoxelModule == nullptr || !pVoxelModule->IsReady())
   {
-    m_State = ezAiVoxelNavigationComponentState::Failed;
+    // Grid not ready yet, don't treat as failure - caller can retry
     return;
   }
 
   m_Navigation.SetVoxelGrid(pVoxelModule->GetVoxelGrid());
+  m_fVoxelSize = pVoxelModule->GetVoxelGrid()->GetVoxelSize();
 
   const ezVec3 vCurrentPos = GetOwner()->GetGlobalPosition();
   const auto result = m_Navigation.FindPath(vCurrentPos, vGlobalPos);
 
-  if (result == ezAiVoxelNavigation::State::PathFound)
+  switch (result)
   {
-    m_State = ezAiVoxelNavigationComponentState::Moving;
-    m_vVelocity = ezVec3::MakeZero();
-  }
-  else
-  {
-    m_State = ezAiVoxelNavigationComponentState::Failed;
+    case ezAiVoxelNavigation::State::PathFound:
+      m_State = ezAiVoxelNavigationComponentState::Moving;
+      m_vVelocity = ezVec3::MakeZero();
+      break;
+
+    case ezAiVoxelNavigation::State::InvalidStartPosition:
+      ezLog::Warning("VoxelNavigation: Start position ({}, {}, {}) is outside the grid or inside a solid voxel.",
+        vCurrentPos.x, vCurrentPos.y, vCurrentPos.z);
+      m_State = ezAiVoxelNavigationComponentState::Failed;
+      break;
+
+    case ezAiVoxelNavigation::State::InvalidTargetPosition:
+      ezLog::Warning("VoxelNavigation: Target position ({}, {}, {}) is outside the grid or inside a solid voxel.",
+        vGlobalPos.x, vGlobalPos.y, vGlobalPos.z);
+      m_State = ezAiVoxelNavigationComponentState::Failed;
+      break;
+
+    default:
+      ezLog::Warning("VoxelNavigation: No path found from ({}, {}, {}) to ({}, {}, {}).",
+        vCurrentPos.x, vCurrentPos.y, vCurrentPos.z,
+        vGlobalPos.x, vGlobalPos.y, vGlobalPos.z);
+      m_State = ezAiVoxelNavigationComponentState::Failed;
+      break;
   }
 }
 
@@ -111,12 +145,14 @@ void ezAiVoxelNavigationComponent::SerializeComponent(ezWorldWriter& inout_strea
   s << m_fReachedDistance;
   s << m_bApplySteering;
   s << m_DebugFlags;
+  inout_stream.WriteGameObjectHandle(m_hNavigationTarget);
 }
 
 void ezAiVoxelNavigationComponent::DeserializeComponent(ezWorldReader& inout_stream)
 {
   SUPER::DeserializeComponent(inout_stream);
   ezStreamReader& s = inout_stream.GetStream();
+  const ezUInt32 uiVersion = inout_stream.GetComponentTypeVersion(GetStaticRTTI());
 
   s >> m_fSpeed;
   s >> m_fAcceleration;
@@ -124,6 +160,11 @@ void ezAiVoxelNavigationComponent::DeserializeComponent(ezWorldReader& inout_str
   s >> m_fReachedDistance;
   s >> m_bApplySteering;
   s >> m_DebugFlags;
+
+  if (uiVersion >= 2)
+  {
+    m_hNavigationTarget = inout_stream.ReadGameObjectHandle();
+  }
 }
 
 void ezAiVoxelNavigationComponent::Update()
@@ -132,6 +173,24 @@ void ezAiVoxelNavigationComponent::Update()
   {
     m_uiSkipNextFrames--;
     return;
+  }
+
+  // If a navigation target is set and we're idle, navigate to it
+  if (m_State == ezAiVoxelNavigationComponentState::Idle && !m_hNavigationTarget.IsInvalidated())
+  {
+    ezGameObject* pTarget = nullptr;
+    if (GetWorld()->TryGetObject(m_hNavigationTarget, pTarget))
+    {
+      const ezVec3 vTargetPos = pTarget->GetGlobalPosition();
+      const float fDistToTarget = (vTargetPos - m_vSteerPosition).GetLength();
+
+      // Only re-navigate if we're not already at the target
+      const float fArrivalThreshold = ezMath::Max(m_fReachedDistance, m_fVoxelSize * 0.5f);
+      if (fDistToTarget > fArrivalThreshold)
+      {
+        SetDestination(vTargetPos);
+      }
+    }
   }
 
   const float tDiff = GetWorld()->GetClock().GetTimeDiff().AsFloatInSeconds();
@@ -188,31 +247,39 @@ void ezAiVoxelNavigationComponent::MoveTowardsWaypoint(float fTimeDiff)
 
   const ezVec3 vCurrentPos = m_vSteerPosition;
   const ezVec3 vTargetWaypoint = m_Navigation.GetNextWaypoint();
-  ezVec3 vDirection = vTargetWaypoint - vCurrentPos;
-  const float fDistanceToWaypoint = vDirection.GetLength();
+  ezVec3 vToWaypoint = vTargetWaypoint - vCurrentPos;
+  float fDistanceToWaypoint = vToWaypoint.GetLength();
 
-  if (fDistanceToWaypoint < 0.001f)
+  // Minimum threshold to consider a waypoint reached, regardless of ReachedDistance setting
+  const float fMinReachThreshold = ezMath::Max(m_fReachedDistance, m_fVoxelSize * 0.25f);
+
+  if (fDistanceToWaypoint <= fMinReachThreshold)
   {
+    // Snap to waypoint to prevent oscillation
+    m_vSteerPosition = vTargetWaypoint;
+
     if (!m_Navigation.AdvanceWaypoint())
     {
       m_State = ezAiVoxelNavigationComponentState::Idle;
       m_vVelocity = ezVec3::MakeZero();
-      return;
+    }
+
+    if (m_bApplySteering)
+    {
+      GetOwner()->SetGlobalPosition(m_vSteerPosition);
+      GetOwner()->SetGlobalRotation(m_qSteerRotation);
     }
     return;
   }
 
-  vDirection /= fDistanceToWaypoint;
+  const ezVec3 vDirection = vToWaypoint / fDistanceToWaypoint;
 
-  // Compute target speed with braking
+  // Compute target speed with braking near end of path
   float fTargetSpeed = m_fSpeed;
-
-  // Check if we should start decelerating
   const float fBrakingDistance = (m_fSpeed * m_fSpeed) / (2.0f * m_fDeceleration);
 
   if (m_Navigation.IsPathComplete() || m_Navigation.GetCurrentWaypointIndex() >= m_Navigation.GetWaypoints().GetCount() - 2)
   {
-    // Near the end of the path, consider arrival distance
     const ezVec3 vFinalTarget = m_Navigation.GetWaypoints()[m_Navigation.GetWaypoints().GetCount() - 1];
     const float fDistToEnd = (vFinalTarget - vCurrentPos).GetLength();
 
@@ -236,25 +303,30 @@ void ezAiVoxelNavigationComponent::MoveTowardsWaypoint(float fTimeDiff)
     fNewSpeed = ezMath::Max(fCurrentSpeed - m_fDeceleration * fTimeDiff, fTargetSpeed);
   }
 
-  m_vVelocity = vDirection * fNewSpeed;
-
-  // Move position
-  m_vSteerPosition = vCurrentPos + m_vVelocity * fTimeDiff;
-
-  // Update rotation to face movement direction
-  if (fNewSpeed > 0.1f)
+  // Clamp movement distance so we don't overshoot the waypoint
+  float fMoveDistance = fNewSpeed * fTimeDiff;
+  if (fMoveDistance >= fDistanceToWaypoint)
   {
-    m_qSteerRotation = ezQuat::MakeShortestRotation(ezVec3::MakeAxisX(), vDirection);
-  }
+    // Would overshoot: snap to waypoint
+    m_vSteerPosition = vTargetWaypoint;
+    m_vVelocity = vDirection * fNewSpeed;
 
-  // Check if we reached the waypoint
-  if (fDistanceToWaypoint <= m_fReachedDistance)
-  {
     if (!m_Navigation.AdvanceWaypoint())
     {
       m_State = ezAiVoxelNavigationComponentState::Idle;
       m_vVelocity = ezVec3::MakeZero();
     }
+  }
+  else
+  {
+    m_vVelocity = vDirection * fNewSpeed;
+    m_vSteerPosition = vCurrentPos + vDirection * fMoveDistance;
+  }
+
+  // Update rotation to face movement direction
+  if (fNewSpeed > 0.1f)
+  {
+    m_qSteerRotation = ezQuat::MakeShortestRotation(ezVec3::MakeAxisX(), vDirection);
   }
 
   if (m_bApplySteering)

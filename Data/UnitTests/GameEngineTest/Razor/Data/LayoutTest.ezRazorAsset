@@ -1,0 +1,113 @@
+HeaderV2
+{
+o
+{
+	Uuid %id{u4{2234567890123456789,8876543210987654321}}
+	s %t{"ezAssetDocumentInfo"}
+	u3 %v{2}
+	s %n{"Header"}
+	p
+	{
+		s %AssetType{"Razor"}
+		VarArray %Dependencies
+		{
+			s{"Data/LayoutTest.xml"}
+			s{"Data/LayoutTest.css"}
+		}
+		Uuid %DocumentID{u4{2234567890123456789,8876543210987654321}}
+		u4 %Hash{1}
+		VarArray %MetaInfo{}
+		VarArray %Outputs{}
+		VarArray %PackageDeps{}
+		VarArray %References
+		{
+			s{"Data/LayoutTest.xml"}
+			s{"Data/LayoutTest.css"}
+		}
+		s %Tags{""}
+	}
+}
+}
+Objects
+{
+o
+{
+	Uuid %id{u4{2111111111111111111,3222222222222222222}}
+	s %t{"ezRazorDocumentAssetProperties"}
+	u3 %v{1}
+	p
+	{
+		Vec2u %ReferenceResolution{u3{1920,1080}}
+		s %RazorFile{"Data/LayoutTest.xml"}
+		s %StyleSheetFile{"Data/LayoutTest.css"}
+	}
+}
+o
+{
+	Uuid %id{u4{4333333333333333333,5444444444444444444}}
+	s %t{"ezDocumentRoot"}
+	u3 %v{1}
+	s %n{"ObjectTree"}
+	p
+	{
+		VarArray %Children
+		{
+			Uuid{u4{2111111111111111111,3222222222222222222}}
+		}
+	}
+}
+}
+Types
+{
+o
+{
+	Uuid %id{u4{5555555555555555555,6666666666666666666}}
+	s %t{"ezReflectedTypeDescriptor"}
+	u3 %v{1}
+	p
+	{
+		VarArray %Attributes{}
+		s %Flags{"ezTypeFlags::Class|ezTypeFlags::Minimal"}
+		VarArray %Functions{}
+		s %ParentTypeName{"ezReflectedClass"}
+		s %PluginName{"Static"}
+		VarArray %Properties{}
+		s %TypeName{"ezDocumentRoot"}
+		u3 %TypeVersion{1}
+	}
+}
+o
+{
+	Uuid %id{u4{7777777777777777777,8888888888888888888}}
+	s %t{"ezReflectedTypeDescriptor"}
+	u3 %v{1}
+	p
+	{
+		VarArray %Attributes{}
+		s %Flags{"ezTypeFlags::Class|ezTypeFlags::Minimal"}
+		VarArray %Functions{}
+		s %ParentTypeName{""}
+		s %PluginName{"Static"}
+		VarArray %Properties{}
+		s %TypeName{"ezReflectedClass"}
+		u3 %TypeVersion{1}
+	}
+}
+o
+{
+	Uuid %id{u4{9999999999999999999,1010101010101010101}}
+	s %t{"ezReflectedTypeDescriptor"}
+	u3 %v{1}
+	p
+	{
+		VarArray %Attributes{}
+		s %Flags{"ezTypeFlags::Class|ezTypeFlags::Minimal"}
+		VarArray %Functions{}
+		s %ParentTypeName{"ezReflectedClass"}
+		s %PluginName{"ezEditorPluginRazor"}
+		VarArray %Properties{}
+		s %TypeName{"ezRazorDocumentAssetProperties"}
+		u3 %TypeVersion{1}
+	}
+}
+}

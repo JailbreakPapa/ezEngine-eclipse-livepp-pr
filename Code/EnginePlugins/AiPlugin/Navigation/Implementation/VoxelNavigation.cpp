@@ -366,7 +366,7 @@ ezVec3 ezAiVoxelNavigation::GetNextWaypoint() const
 
 bool ezAiVoxelNavigation::IsPathComplete() const
 {
-  return m_Waypoints.IsEmpty() || m_uiCurrentWaypoint >= m_Waypoints.GetCount() - 1;
+  return m_Waypoints.IsEmpty() || m_uiCurrentWaypoint >= m_Waypoints.GetCount();
 }
 
 void ezAiVoxelNavigation::CancelNavigation()

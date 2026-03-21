@@ -1,0 +1,120 @@
+/* Razor UI Layout Test Stylesheet */
+
+Root {
+  width: 100%;
+  height: 100%;
+  background-color: #2d2d2d;
+  padding: 20px;
+}
+
+.layout-container {
+  width: 100%;
+  height: 100%;
+  gap: 20px;
+}
+
+/* === Section Styling === */
+.section {
+  background-color: #3d3d3d;
+  border-radius: 8px;
+  padding: 16px;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+/* === Row and Column === */
+.row {
+  flex-direction: row;
+  gap: 10px;
+}
+
+.column {
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* === Box Items === */
+.box-item {
+  width: 80px;
+  height: 60px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.box-small {
+  padding: 8px 16px;
+  background-color: #555555;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+/* === Colors === */
+.red {
+  background-color: #e74c3c;
+}
+
+.green {
+  background-color: #27ae60;
+}
+
+.blue {
+  background-color: #3498db;
+}
+
+/* === Justify Content === */
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+/* === Flex === */
+.flex-1 {
+  flex: 1;
+  width: auto;
+}
+
+.flex-2 {
+  flex: 2;
+  width: auto;
+}
+
+/* === Nested Layouts === */
+.nested-outer {
+  flex-direction: row;
+  gap: 16px;
+  padding: 16px;
+  background-color: #4a4a4a;
+  border-radius: 6px;
+}
+
+.nested-inner {
+  flex: 1;
+  padding: 12px;
+  background-color: #5a5a5a;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.nested-inner Text {
+  color: #cccccc;
+  font-size: 14px;
+}

@@ -20,35 +20,46 @@ VERTEX_SKINNING
 Permutation BLEND_MODE;
 Permutation SHADING_MODE;
 
-Color HairColor @Default(Color(0.3, 0.15, 0.05));
-Color ScatterColor @Default(Color(0.5, 0.3, 0.1));
+Color HairColor @Default(Color(0.3, 0.15, 0.05)) @Group("Hair Color");
+bool UseHairColorTexture @Group("Hair Color");
+Texture2D HairColorTexture @Group("Hair Color");
 
-bool UseHairColorTexture;
-Texture2D HairColorTexture;
+Color ScatterColor @Default(Color(0.5, 0.3, 0.1)) @Group("Highlights");
+float SpecularIntensity @Default(1.0) @Clamp(0.0, 5.0) @Group("Highlights");
+float PrimaryShift @Default(-0.1) @Clamp(-0.5, 0.5) @Group("Highlights");
+float SecondaryShift @Default(0.1) @Clamp(-0.5, 0.5) @Group("Highlights");
+float PrimaryRoughness @Default(0.1) @Clamp(0.01, 1.0) @Group("Highlights");
+float SecondaryRoughness @Default(0.3) @Clamp(0.01, 1.0) @Group("Highlights");
+float TransmissionRoughness @Default(0.15) @Clamp(0.01, 1.0) @Group("Highlights");
 
-bool UseFlowMap;
-Texture2D HairFlowMap;
+bool UseNormalTexture @Group("Textures");
+Texture2D NormalTexture @Group("Textures");
 
-bool UseOpacityMap;
-Texture2D OpacityMap;
+bool UseFlowMap @Group("Textures");
+Texture2D HairFlowMap @Group("Textures");
 
-bool UseAOMap;
-Texture2D AOMap;
+bool UseOpacityMap @Group("Textures");
+Texture2D OpacityMap @Group("Textures");
+bool OpacityFromAlpha @Default(true) @Group("Textures");
 
-Texture2D DitherNoiseTexture @Default("{ ac614d7c-2b31-4a7b-aa0c-c5d8200b7b89 }");
+bool UseAOMap @Group("Textures");
+Texture2D AOMap @Group("Textures");
 
-float PrimaryShift @Default(-0.1) @Clamp(-0.5, 0.5);
-float SecondaryShift @Default(0.1) @Clamp(-0.5, 0.5);
-float PrimaryRoughness @Default(0.1) @Clamp(0.01, 1.0);
-float SecondaryRoughness @Default(0.3) @Clamp(0.01, 1.0);
-float TransmissionRoughness @Default(0.15) @Clamp(0.01, 1.0);
-float SpecularIntensity @Default(1.0) @Clamp(0.0, 5.0);
-float MaskThreshold @Default(0.3) @Clamp(0.0, 1.0);
-float WindInfluenceScale @Default(1.0) @Clamp(0.0, 5.0);
+Texture2D DitherNoiseTexture @Default("{ ac614d7c-2b31-4a7b-aa0c-c5d8200b7b89 }") @Group("Textures");
+
+float RootDarkening @Default(0.3) @Clamp(0.0, 1.0) @Group("Root-to-Tip");
+bool RootDarkeningFromUV @Default(true) @Group("Root-to-Tip");
+
+float MaskThreshold @Default(0.3) @Clamp(0.0, 1.0) @Group("Alpha");
+
+float WindInfluenceScale @Default(1.0) @Clamp(0.0, 5.0) @Group("Animation");
 
 [MATERIALCONFIG]
 
-#include <Shaders/Materials/MaterialConfig.h>
+// Hair always renders through the LitHair category (depth prepass + transparent forward),
+// regardless of blend mode. The ezHairComponent forces this at extraction time.
+// This fallback category is used if the material is assigned to a non-hair component.
+RenderDataCategory = LitTransparent
 
 [RENDERSTATE]
 
@@ -59,9 +70,12 @@ float WindInfluenceScale @Default(1.0) @Clamp(0.0, 5.0);
 COLOR4F(HairColor);
 COLOR4F(ScatterColor);
 BOOL1(UseHairColorTexture);
+BOOL1(UseNormalTexture);
 BOOL1(UseFlowMap);
 BOOL1(UseOpacityMap);
+BOOL1(OpacityFromAlpha);
 BOOL1(UseAOMap);
+BOOL1(RootDarkeningFromUV);
 FLOAT1(PrimaryShift);
 FLOAT1(SecondaryShift);
 FLOAT1(PrimaryRoughness);
@@ -70,6 +84,7 @@ FLOAT1(TransmissionRoughness);
 FLOAT1(SpecularIntensity);
 FLOAT1(MaskThreshold);
 FLOAT1(WindInfluenceScale);
+FLOAT1(RootDarkening);
 
 [VERTEXSHADER]
 
@@ -96,14 +111,18 @@ float3 GetWorldPositionOffset(ezPerInstanceData data, float3 worldPosition)
 
   float time = GlobalTime;
 
-  // Simple wind displacement for hair strands
-  float wind1 = sin(time * 2.0 + worldPosition.x * 0.3 + worldPosition.z * 0.5) * windInfluence * 0.05;
-  float wind2 = cos(time * 1.5 + worldPosition.y * 0.4) * windInfluence * 0.03;
+  // Use UV.y as a root-to-tip factor (0 = root, 1 = tip).
+  // Tips should move more than roots. CustomData.z contains the stiffness.
+  float tipFactor = saturate(data.CustomData.z);
 
-  // Gravity droop from CustomData.y
-  float gravity = -data.CustomData.y * 0.01;
+  // Wind displacement scaled by tip factor so roots stay anchored
+  float wind1 = sin(time * 2.0 + worldPosition.x * 0.3 + worldPosition.z * 0.5) * windInfluence * 0.05 * tipFactor;
+  float wind2 = cos(time * 1.5 + worldPosition.z * 0.4) * windInfluence * 0.03 * tipFactor;
 
-  return float3(wind1, wind2, gravity);
+  // Gravity droop along the Y axis (engine up), scaled by tip factor
+  float gravity = -data.CustomData.y * 0.01 * tipFactor;
+
+  return float3(wind1, gravity, wind2);
 }
 
 VS_OUT main(VS_IN Input)
@@ -133,6 +152,9 @@ VS_OUT main(VS_IN Input)
 Texture2D HairColorTexture BIND_GROUP(BG_MATERIAL);
 SamplerState HairColorTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
 
+Texture2D NormalTexture BIND_GROUP(BG_MATERIAL);
+SamplerState NormalTexture_AutoSampler BIND_GROUP(BG_MATERIAL);
+
 Texture2D HairFlowMap BIND_GROUP(BG_MATERIAL);
 SamplerState HairFlowMap_AutoSampler BIND_GROUP(BG_MATERIAL);
 
@@ -146,6 +168,13 @@ Texture2D DitherNoiseTexture BIND_GROUP(BG_MATERIAL);
 
 float3 GetNormal()
 {
+  [branch]
+  if (GetMaterialData(UseNormalTexture))
+  {
+    float3 normalTS = DecodeNormalTexture(NormalTexture.Sample(NormalTexture_AutoSampler, G.Input.TexCoord0.xy));
+    return TangentToWorldSpace(normalTS);
+  }
+
   return G.Input.Normal;
 }
 
@@ -179,7 +208,17 @@ float GetOpacity()
   [branch]
   if (GetMaterialData(UseOpacityMap))
   {
-    opacity *= OpacityMap.Sample(OpacityMap_AutoSampler, G.Input.TexCoord0.xy).a;
+    float4 opacitySample = OpacityMap.Sample(OpacityMap_AutoSampler, G.Input.TexCoord0.xy);
+
+    [branch]
+    if (GetMaterialData(OpacityFromAlpha))
+    {
+      opacity *= opacitySample.a;
+    }
+    else
+    {
+      opacity *= opacitySample.r;
+    }
   }
 
   return opacity - GetMaterialData(MaskThreshold);
@@ -220,11 +259,45 @@ void FinalizeMaterial(inout ezMaterialData matData)
     matData.tangentDirection = normalize(G.Input.Tangent);
   }
 
-  // Apply per-lobe shift values from material parameters into the HairBRDF
-  // The HairBRDF uses fixed shifts internally; we override them here through the tangent
-  // by pre-shifting:
-  // (The actual per-lobe shifts are handled in HairBRDF.h using fixed values.
-  //  Material-level PrimaryShift/SecondaryShift are applied here as a global tangent offset.)
-  float avgShift = (GetMaterialData(PrimaryShift) + GetMaterialData(SecondaryShift)) * 0.5;
-  matData.tangentDirection = normalize(matData.tangentDirection + avgShift * matData.worldNormal);
+  // Pass per-lobe BRDF parameters to the hair shading model
+  matData.hairPrimaryShift = GetMaterialData(PrimaryShift);
+  matData.hairSecondaryShift = GetMaterialData(SecondaryShift);
+  matData.hairPrimaryRoughness = GetMaterialData(PrimaryRoughness);
+  matData.hairSecondaryRoughness = GetMaterialData(SecondaryRoughness);
+  matData.hairTransmissionRoughness = GetMaterialData(TransmissionRoughness);
+  matData.hairSpecularIntensity = GetMaterialData(SpecularIntensity);
+
+  // Hair cards use direct color (not melanin model).
+  // Initialize the new absorption fields so the upgraded HairBRDF reads valid data.
+  matData.hairUseMelanin = 0.0;
+  matData.hairDyeColor = GetDiffuseColor();
+  matData.hairMelanin = 0.0;
+  matData.hairMelaninRedness = 0.0;
+  matData.hairMultipleScatterScale = 0.0;
+  matData.hairScatterIntensity = GetMaterialData(SpecularIntensity);
+
+  // Override roughness for the indirect specular system. The per-lobe roughnesses
+  // (0.1, 0.3, etc.) are used by HairShading for direct light highlights, but the
+  // engine's environment reflection pipeline uses matData.roughness to sample reflection
+  // probes. Low roughness would cause mirror-like sky reflections that blow out hair.
+  // Use a high roughness so indirect specular is soft and subtle.
+  matData.roughness = 0.85;
+  matData.perceptualRoughness = 0.85;
+
+  // Dampen specular color for indirect reflections. Hair should not reflect the
+  // environment like a metallic surface -- indirect specular should be very subtle.
+  matData.specularColor *= 0.15;
+
+  // Root-to-tip darkening: uses V coordinate as gradient (0 = root, 1 = tip)
+  float rootDarkeningAmount = GetMaterialData(RootDarkening);
+  [branch]
+  if (rootDarkeningAmount > 0.0 && GetMaterialData(RootDarkeningFromUV))
+  {
+    float rootFactor = 1.0 - G.Input.TexCoord0.y; // V=0 is root, V=1 is tip
+    matData.hairRootDarkening = rootDarkeningAmount * rootFactor;
+  }
+  else
+  {
+    matData.hairRootDarkening = 0.0;
+  }
 }

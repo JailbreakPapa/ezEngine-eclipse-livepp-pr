@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Razor UI Text Test - Tests typography and text rendering -->
+<Root>
+  <Box class="text-container">
+    
+    <!-- Headings -->
+    <Box class="section">
+      <Text class="h1">Heading 1 - Large Title</Text>
+      <Text class="h2">Heading 2 - Section Header</Text>
+      <Text class="h3">Heading 3 - Subsection</Text>
+      <Text class="h4">Heading 4 - Minor Header</Text>
+    </Box>
+    
+    <!-- Body Text -->
+    <Box class="section">
+      <Text class="body">
+        This is body text that demonstrates normal paragraph styling.
+        It should wrap properly at the container edge and maintain 
+        consistent line height throughout the paragraph.
+      </Text>
+      <Text class="body-small">
+        Smaller body text for captions and secondary information.
+      </Text>
+    </Box>
+    
+    <!-- Text Colors -->
+    <Box class="section">
+      <Text class="text-primary">Primary Color Text</Text>
+      <Text class="text-secondary">Secondary Color Text</Text>
+      <Text class="text-success">Success Color Text</Text>
+      <Text class="text-warning">Warning Color Text</Text>
+      <Text class="text-error">Error Color Text</Text>
+    </Box>
+    
+    <!-- Text Alignment -->
+    <Box class="section">
+      <Text class="align-left">Left Aligned Text</Text>
+      <Text class="align-center">Center Aligned Text</Text>
+      <Text class="align-right">Right Aligned Text</Text>
+    </Box>
+    
+    <!-- Font Weights -->
+    <Box class="section">
+      <Text class="weight-light">Light Weight Text</Text>
+      <Text class="weight-normal">Normal Weight Text</Text>
+      <Text class="weight-bold">Bold Weight Text</Text>
+    </Box>
+    
+    <!-- Special Characters -->
+    <Box class="section">
+      <Text class="special">Numbers: 0123456789</Text>
+      <Text class="special">Symbols: @#$%^&amp;*()[]{}|</Text>
+      <Text class="special">Unicode: äöüß éèêë ñ</Text>
+    </Box>
+    
+  </Box>
+</Root>

@@ -28,6 +28,7 @@
     <file>StateMachine.svg</file>
     <file>BlackboardTemplate.svg</file>
     <file>CustomData.svg</file>
+    <file>HairStrands.svg</file>
   </qresource>
   <qresource prefix="EditorPluginAssets">
     <file>Cleanup.svg</file>

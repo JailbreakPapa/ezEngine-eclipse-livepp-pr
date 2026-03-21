@@ -62,6 +62,9 @@ public:
   /// Returns the current navigation state.
   ezEnum<ezAiVoxelNavigationComponentState> GetState() const { return m_State; } ///< [ scriptable ]
 
+  void SetNavigationTargetReference(const char* szReference); // [ property ]
+  void SetNavigationTarget(ezGameObjectHandle hObject);
+
   float m_fSpeed = 5.0f;          ///< [ property ] Target movement speed.
   float m_fAcceleration = 3.0f;   ///< [ property ] How fast to gain speed.
   float m_fDeceleration = 8.0f;   ///< [ property ] How fast to brake.
@@ -79,10 +82,15 @@ protected:
 
   ezAiVoxelNavigation m_Navigation;
   ezEnum<ezAiVoxelNavigationComponentState> m_State;
+  ezGameObjectHandle m_hNavigationTarget;
 
   ezVec3 m_vVelocity = ezVec3::MakeZero();
   ezVec3 m_vSteerPosition = ezVec3::MakeZero();
   ezQuat m_qSteerRotation = ezQuat::MakeIdentity();
 
+  float m_fVoxelSize = 0.5f;
   ezUInt8 m_uiSkipNextFrames = 0;
+
+private:
+  const char* DummyGetter() const { return nullptr; }
 };

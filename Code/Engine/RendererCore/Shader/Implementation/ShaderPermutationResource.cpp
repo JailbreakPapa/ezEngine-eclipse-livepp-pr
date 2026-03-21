@@ -74,6 +74,11 @@ ezResourceLoadDesc ezShaderPermutationResource::UpdateContent(ezStreamReader* St
     return res;
   }
 
+  if (bOldVersion)
+  {
+    ezLog::Warning("Shader Permutation '{0}': Binary is an old version (needs recompile)", GetResourceID());
+  }
+
   auto pDevice = ezGALDevice::GetDefaultDevice();
 
   // get the shader render state object
@@ -88,6 +93,7 @@ ezResourceLoadDesc ezShaderPermutationResource::UpdateContent(ezStreamReader* St
   ezGALShaderCreationDescription ShaderDesc;
 
   // iterate over all shader stages, add them to the descriptor
+  ezUInt32 uiStagesLoaded = 0;
   for (ezUInt32 stage = ezGALShaderStage::VertexShader; stage < ezGALShaderStage::ENUM_COUNT; ++stage)
   {
     const ezUInt32 uiStageHash = PermutationBinary.m_uiShaderStageHashes[stage];
@@ -99,7 +105,7 @@ ezResourceLoadDesc ezShaderPermutationResource::UpdateContent(ezStreamReader* St
 
     if (pStageBin == nullptr)
     {
-      ezLog::Error("Shader Permutation '{0}': Stage '{1}' could not be loaded", GetResourceID(), ezGALShaderStage::Names[stage]);
+      ezLog::Error("Shader Permutation '{0}': Stage '{1}' (hash {2}) could not be loaded from platform '{3}'", GetResourceID(), ezGALShaderStage::Names[stage], ezArgU(uiStageHash, 8, true, 16, true), ezShaderManager::GetActivePlatform());
       return res;
     }
 
@@ -112,13 +118,16 @@ ezResourceLoadDesc ezShaderPermutationResource::UpdateContent(ezStreamReader* St
     ShaderDesc.m_ByteCodes[stage] = pStageBin->m_pGALByteCode;
 
     uiGPUMem += pStageBin->m_pGALByteCode->m_ByteCode.GetCount();
+    uiStagesLoaded++;
   }
+
+  ezLog::Dev("Shader Permutation '{0}': Loaded {1} stages, creating GAL shader...", GetResourceID(), uiStagesLoaded);
 
   m_hShader = pDevice->CreateShader(ShaderDesc);
 
   if (m_hShader.IsInvalidated())
   {
-    ezLog::Error("Shader Permutation '{0}': Shader program creation failed", GetResourceID());
+    ezLog::Error("Shader Permutation '{0}': Shader program creation failed (CreateShader returned invalid handle)", GetResourceID());
     return res;
   }
 
@@ -286,8 +295,12 @@ ezResourceLoadData ezShaderPermutationResourceLoader::OpenDataStream(const ezRes
 
   if (bNeedsCompilation)
   {
+    ezLog::Dev("Shader Permutation '{0}': Needs compilation (runtime compilation: {1})", pResource->GetResourceID(), ezShaderManager::IsRuntimeCompilationEnabled() ? "ON" : "OFF");
     if (RunCompiler(pResource, permutationBinary, false).Failed())
+    {
+      ezLog::Error("Shader Permutation '{0}': RunCompiler failed", pResource->GetResourceID());
       return res;
+    }
 
     ezFileReader File;
 

@@ -1,0 +1,5 @@
+<Root>
+  <Box class="main">
+    <Text class="title">Hello Razor</Text>
+  </Box>
+</Root>
